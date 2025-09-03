@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "praxis-core"
+version = "0.0.1"
+description = "praxis-core: a system for automating the feedback collection and employee assessment process."
+requires-python = ">=3.10"
+authors = [
+    {name = "Kalinin Alexandr", email = "author@example.com"},
+    {name = "Lunyakov Alexey", email = "author@example.com"},
+    {name = "Poletaev Vladislav", email = "author@example.com"},
+    {name = "Chufistov George", email = "author@example.com"}
+]
+dependencies = [
+    
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
