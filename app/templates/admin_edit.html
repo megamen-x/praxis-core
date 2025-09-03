@@ -1,0 +1,166 @@
+<!-- app/templates/admin_edit.html -->
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mb-3 mono">Редактирование опроса</h1>
+
+<div class="q-block mb-3">
+  <div class="row g-2">
+    <div class="col-12">
+      <label class="form-label mono">Название</label>
+      <input id="title" class="form-control brutal-input" type="text" value="{{ review.title }}">
+    </div>
+    <div class="col-12">
+      <label class="form-label mono">Описание</label>
+      <textarea id="description" class="form-control brutal-input" rows="3">{{ review.description or '' }}</textarea>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label mono">Анонимность</label>
+      <select id="anonymity" class="form-select brutal-input">
+        <option value="true" {% if review.anonymity %}selected{% endif %}>Вкл</option>
+        <option value="false" {% if not review.anonymity %}selected{% endif %}>Выкл</option>
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label mono">Старт</label>
+      <input id="start_at" class="form-control brutal-input" type="datetime-local" value="{{ (review.start_at or '')|replace(' ', 'T') }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label mono">Дедлайн</label>
+      <input id="end_at" class="form-control brutal-input" type="datetime-local" value="{{ (review.end_at or '')|replace(' ', 'T') }}">
+    </div>
+  </div>
+  <div class="mt-3">
+    <button id="btn-save-review" class="btn btn-brutal">Сохранить</button>
+  </div>
+</div>
+
+<h3 class="mono">Вопросы</h3>
+<div id="questions">
+  {% for q in questions %}
+  <div class="q-block" data-id="{{ q.question_id }}">
+    <div class="mb-2 mono">#{{ q.position }}</div>
+    <input class="form-control brutal-input mb-2 q-text" value="{{ q.question_text }}">
+    <div class="row g-2 align-items-center">
+      <div class="col-md-3">
+        <select class="form-select brutal-input q-type">
+          {% for t in ['text','textarea','radio','checkbox','scale','rating'] %}
+            <option value="{{ t }}" {% if q.question_type==t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 form-check">
+        <input class="form-check-input q-req" type="checkbox" {% if q.is_required %}checked{% endif %}> <label class="form-check-label">Обязательный</label>
+      </div>
+      <div class="col-md-2">
+        <input class="form-control brutal-input q-pos" type="number" value="{{ q.position }}">
+      </div>
+      <div class="col-md-5">
+        <input class="form-control brutal-input q-meta" placeholder='meta JSON (options, min/max)' value="{{ q.meta|tojson }}">
+      </div>
+    </div>
+    <div class="mt-2">
+      <button class="btn btn-sm btn-brutal btn-update">Обновить</button>
+      <button class="btn btn-sm btn-danger btn-del">Удалить</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="q-block">
+  <h5 class="mono">Добавить вопрос</h5>
+  <div id="new-questions"></div>
+  <button id="btn-add-q" class="btn btn-sm btn-secondary">+ вопрос</button>
+  <button id="btn-create" class="btn btn-brutal">Сохранить вопросы</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const token = "{{ token }}";
+  const reviewId = "{{ review.review_id }}";
+  const csrf = (document.cookie.match(/(?:^|; )admin_csrf=([^;]*)/)||[])[1] || '';
+  function headers() {
+    return { "Content-Type":"application/json", "X-CSRF-Token": decodeURIComponent(csrf) };
+  }
+
+  document.querySelector('#btn-save-review').addEventListener('click', async () => {
+    const payload = {
+      title: document.querySelector('#title').value,
+      description: document.querySelector('#description').value,
+      anonymity: document.querySelector('#anonymity').value === 'true',
+      start_at: document.querySelector('#start_at').value || null,
+      end_at: document.querySelector('#end_at').value || null,
+    };
+    const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
+    if (!res.ok) alert('Ошибка сохранения');
+  });
+
+  document.querySelectorAll('#questions .q-block').forEach(block => {
+    block.querySelector('.btn-update').addEventListener('click', async () => {
+      const id = block.dataset.id;
+      const payload = {
+        question_text: block.querySelector('.q-text').value,
+        question_type: block.querySelector('.q-type').value,
+        is_required: block.querySelector('.q-req').checked,
+        position: parseInt(block.querySelector('.q-pos').value || '0'),
+      };
+      const meta = block.querySelector('.q-meta').value;
+      if (meta) try { payload.meta = JSON.parse(meta); } catch(e){}
+      const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
+      if (!res.ok) alert('Ошибка обновления');
+      location.reload();
+    });
+    block.querySelector('.btn-del').addEventListener('click', async () => {
+      const id = block.dataset.id;
+      if (!confirm('Удалить вопрос?')) return;
+      const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, { method:'DELETE', headers: headers() });
+      if (!res.ok) alert('Ошибка удаления');
+      location.reload();
+    });
+  });
+
+  const newWrap = document.querySelector('#new-questions');
+  document.querySelector('#btn-add-q').addEventListener('click', () => {
+    const el = document.createElement('div');
+    el.className = 'q-block';
+    el.innerHTML = `
+      <input class="form-control brutal-input mb-2 q-text" placeholder="Текст вопроса">
+      <div class="row g-2 align-items-center">
+        <div class="col-md-3">
+          <select class="form-select brutal-input q-type">
+            ${['text','textarea','radio','checkbox','scale','rating'].map(t=>`<option>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div class="col-md-2 form-check">
+          <input class="form-check-input q-req" type="checkbox"> <label class="form-check-label">Обязательный</label>
+        </div>
+        <div class="col-md-2">
+          <input class="form-control brutal-input q-pos" type="number" value="0">
+        </div>
+        <div class="col-md-5">
+          <input class="form-control brutal-input q-meta" placeholder='meta JSON (options, min/max)'>
+        </div>
+      </div>
+    `;
+    newWrap.appendChild(el);
+  });
+
+  document.querySelector('#btn-create').addEventListener('click', async () => {
+    const items = Array.from(newWrap.querySelectorAll('.q-block')).map(b => {
+      const payload = {
+        question_text: b.querySelector('.q-text').value,
+        question_type: b.querySelector('.q-type').value,
+        is_required: b.querySelector('.q-req').checked,
+        position: parseInt(b.querySelector('.q-pos').value || '0'),
+      };
+      const meta = b.querySelector('.q-meta').value;
+      if (meta) try { payload.meta = JSON.parse(meta); } catch(e){}
+      return payload;
+    });
+    if (!items.length) return;
+    const res = await fetch(`/api/reviews/${reviewId}/questions?t=${token}`, { method:'POST', headers: headers(), body: JSON.stringify(items) });
+    if (!res.ok) alert('Ошибка создания');
+    location.reload();
+  });
+</script>
+{% endblock %}

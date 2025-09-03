@@ -1,0 +1,18 @@
+/* app/static/css/style.css */
+:root {
+  --bg: #fffef2;
+  --ink: #111;
+  --accent: #ff007a;
+}
+
+body { background: var(--bg); color: var(--ink); font-family: 'IBM Plex Mono', monospace; }
+.brutal-input, .form-control, .form-check-input { border: 3px solid var(--ink); border-radius: 0; }
+.btn-brutal { border: 3px solid var(--ink); background: var(--accent); color: white; box-shadow: 6px 6px 0 var(--ink); transition: transform 140ms ease, box-shadow 140ms ease; }
+.btn-brutal:active { transform: translate(4px,4px); box-shadow: 2px 2px 0 var(--ink); }
+.q-block { padding: 16px; margin-bottom: 18px; border: 3px solid var(--ink); background: #fff; }
+.mono { font-family: inherit; }
+
+.page-enter { opacity: 0; transform: translateX(10px); }
+.page-enter-active { opacity: 1; transform: translateX(0); transition: all 200ms ease; }
+.page-exit { opacity: 1; }
+.page-exit-active { opacity: 0; transform: translateX(-10px); transition: all 200ms ease; }

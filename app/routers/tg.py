@@ -1,0 +1,121 @@
+# app/routers/tg.py
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy.orm import Session
+from sqlalchemy import select, func
+from app.db.session import get_db
+from app.core.security import require_bot_auth
+from app.core.config import settings
+from app.models import User, Review, ReviewStatus, Survey, SurveyStatus
+from app.schemas.review import CreateReviewIn, ReviewOut
+from app.schemas.survey import CreateSurveysIn, SurveyStatusOut
+from app.services.links import sign_token
+
+router = APIRouter()
+
+
+@router.post("/api/tg/reviews/create")
+def tg_create_review(
+    payload: CreateReviewIn, request: Request, db: Session = Depends(get_db), _: None = Depends(require_bot_auth)
+):
+    created_by = db.get(User, payload.created_by_user_id)
+    subject = db.get(User, payload.subject_user_id)
+    if not created_by or not subject:
+        raise HTTPException(status_code=404, detail="User not found")
+    review = Review(
+        created_by_user_id=payload.created_by_user_id,
+        subject_user_id=payload.subject_user_id,
+        title=payload.title,
+        description=payload.description,
+        anonymity=payload.anonymity,
+        start_at=payload.start_at,
+        end_at=payload.end_at,
+        status=ReviewStatus.draft,
+    )
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+
+    t = sign_token({"role": "admin", "sub": review.review_id}, ttl_sec=settings.ADMIN_LINK_TTL)
+    admin_link = f"/admin/reviews/{review.review_id}?t={t}"
+    return {"review_id": review.review_id, "admin_link": admin_link}
+
+
+@router.get("/api/tg/users/search")
+def tg_user_search(query: str = Query(""), request: Request = None, db: Session = Depends(get_db), _: None = Depends(require_bot_auth)):
+    q = f"%{query.lower()}%"
+    stmt = select(User).where(
+        func.lower(User.first_name + " " + User.last_name).like(q) | func.lower(User.email).like(q)
+    ).limit(50)
+    rows = db.scalars(stmt).all()
+    return [
+        {
+            "user_id": u.user_id,
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "department": u.department,
+            "email": u.email,
+        }
+        for u in rows
+    ]
+
+
+@router.post("/api/tg/reviews/{review_id}/surveys")
+def tg_create_surveys(
+    review_id: str, payload: CreateSurveysIn, request: Request, db: Session = Depends(get_db), _: None = Depends(require_bot_auth)
+):
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    created = []
+    for uid in payload.evaluator_user_ids:
+        s = Survey(review_id=review_id, evaluator_user_id=uid, status=SurveyStatus.not_started)
+        db.add(s)
+        db.flush()
+        t = sign_token({"role": "respondent", "sub": s.survey_id}, ttl_sec=settings.RESPONDENT_LINK_TTL)
+        created.append({"survey_id": s.survey_id, "form_link": f"/form/{s.survey_id}?t={t}"})
+    db.commit()
+    return created
+
+
+@router.post("/api/tg/surveys/{survey_id}/accept")
+def tg_survey_accept(survey_id: str, request: Request, db: Session = Depends(get_db), _: None = Depends(require_bot_auth)):
+    s = db.get(Survey, survey_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    if s.status == SurveyStatus.declined:
+        s.is_declined = False
+        s.declined_reason = None
+    if s.status == SurveyStatus.not_started:
+        # keep not_started until user opens form
+        pass
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/api/tg/surveys/{survey_id}/decline")
+def tg_survey_decline(survey_id: str, reason: str = "", request: Request = None, db: Session = Depends(get_db), _: None = Depends(require_bot_auth)):
+    s = db.get(Survey, survey_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    s.status = SurveyStatus.declined
+    s.is_declined = True
+    s.declined_reason = reason
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/api/tg/surveys/{survey_id}/status", response_model=SurveyStatusOut)
+def tg_survey_status(survey_id: str, request: Request, db: Session = Depends(get_db), _: None = Depends(require_bot_auth)):
+    s = db.get(Survey, survey_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    return {"survey_id": survey_id, "status": s.status.value}
+
+
+@router.get("/api/tg/reviews/{review_id}/progress")
+def tg_review_progress(review_id: str, request: Request, db: Session = Depends(get_db), _: None = Depends(require_bot_auth)):
+    total = db.query(Survey).filter(Survey.review_id == review_id).count()
+    completed = db.query(Survey).filter(Survey.review_id == review_id, Survey.status == SurveyStatus.completed).count()
+    declined = db.query(Survey).filter(Survey.review_id == review_id, Survey.status == SurveyStatus.declined).count()
+    return {"review_id": review_id, "total": total, "completed": completed, "declined": declined}
