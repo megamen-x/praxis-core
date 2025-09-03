@@ -1,20 +1,23 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "praxis-core"
 version = "0.0.1"
-description = "praxis-core: a system for automating the feedback collection and employee assessment process."
+description = "System for automating the feedback collection and employee assessment process."
+readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.10"
 authors = [
-    {name = "Kalinin Alexandr", email = "author@example.com"},
-    {name = "Lunyakov Alexey", email = "author@example.com"},
-    {name = "Poletaev Vladislav", email = "author@example.com"},
-    {name = "Chufistov George", email = "author@example.com"}
+    {name = "Alexandr Kalinin", email = "agarius2003@gmail.com"},
+    {name = "Alexey Lunyakov", email = "alx01001@gmail.com"},
+    {name = "Vladislav Poletaev", email = "whatisslove7@gmail.com"},
+    {name = "George Chufistov", email = "georgechuff-olympiads@yandex.ru"}
 ]
 dependencies = [
-    
+    "openai>=1.103.0",
+    "pydantic>=2.11.3"
 ]
 
 [tool.setuptools.packages.find]

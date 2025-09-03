@@ -31,8 +31,6 @@ I'll answer as a world-famous <role> PhD <detailed topic> with <most prestigious
 </instructions>
 
 <task>
-
 {task}
-
 </task>
 """
