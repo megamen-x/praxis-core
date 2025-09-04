@@ -14,8 +14,9 @@ router = APIRouter()
 
 
 @router.post("/api/tg/reviews/create")
+# , _: None = Depends(require_bot_auth)
 def tg_create_review(
-    payload: CreateReviewIn, request: Request, db: Session = Depends(get_db), _: None = Depends(require_bot_auth)
+    payload: CreateReviewIn, request: Request, db: Session = Depends(get_db)
 ):
     created_by = db.get(User, payload.created_by_user_id)
     subject = db.get(User, payload.subject_user_id)
@@ -39,6 +40,9 @@ def tg_create_review(
     admin_link = f"/admin/reviews/{review.review_id}?t={t}"
     return {"review_id": review.review_id, "admin_link": admin_link}
 
+"""
+curl -X POST "http://localhost:8000/api/tg/reviews/create" -H "Content-Type: application/json" -d '{"created_by_user_id":"b98d88fd-f4d5-4aff-b51c-43a27f75cfda","subject_user_id":"8e10f80d-e58a-4c81-8723-cee5f9b1261c","title":"Demo 360","description":"Test","anonymity":true}'
+"""
 
 @router.get("/api/tg/users/search")
 def tg_user_search(query: str = Query(""), request: Request = None, db: Session = Depends(get_db), _: None = Depends(require_bot_auth)):
@@ -60,8 +64,9 @@ def tg_user_search(query: str = Query(""), request: Request = None, db: Session 
 
 
 @router.post("/api/tg/reviews/{review_id}/surveys")
+# _: None = Depends(require_bot_auth)
 def tg_create_surveys(
-    review_id: str, payload: CreateSurveysIn, request: Request, db: Session = Depends(get_db), _: None = Depends(require_bot_auth)
+    review_id: str, payload: CreateSurveysIn, request: Request, db: Session = Depends(get_db), 
 ):
     review = db.get(Review, review_id)
     if not review:

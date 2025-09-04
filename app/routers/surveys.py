@@ -33,8 +33,8 @@ def form_page(survey_id: str, request: Request, t: str = Query(...), db: Session
     review = db.get(Review, survey.review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
-    if review.end_at and review.end_at < utcnow():
-        raise HTTPException(status_code=410, detail="Deadline passed")
+    # if review.end_at and review.end_at < utcnow():
+    #     raise HTTPException(status_code=410, detail="Deadline passed")
 
     rows = db.scalars(select(Question).where(Question.review_id == survey.review_id).order_by(Question.position)).all()
     questions = []
@@ -94,8 +94,8 @@ def save_answers(
     review = db.get(Review, survey.review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
-    if final and review.end_at and review.end_at < utcnow():
-        raise HTTPException(status_code=410, detail="Deadline passed")
+    # if final and review.end_at and review.end_at < utcnow():
+    #     raise HTTPException(status_code=410, detail="Deadline passed")
 
     # Upsert answers
     qids = set(payload.answers.keys())
@@ -128,3 +128,9 @@ def save_answers(
 
     db.commit()
     return {"ok": True, "final": final}
+
+from fastapi.responses import HTMLResponse
+
+@router.get("/thanks", response_class=HTMLResponse)
+def thanks_page(request: Request):
+    return templates.TemplateResponse("thanks.html", {"request": request, "title": "Спасибо"})

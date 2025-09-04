@@ -16,7 +16,7 @@ app.include_router(surveys.router)
 app.include_router(tg.router)
 
 
-@app.lifespan("startup")
+@app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
 
