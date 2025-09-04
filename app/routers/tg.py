@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
-from app.db.session import get_db
+from db.session import get_db
 from app.core.security import require_bot_auth
 from app.core.config import settings
 from app.models import User, Review, ReviewStatus, Survey, SurveyStatus
@@ -11,7 +11,6 @@ from app.schemas.survey import CreateSurveysIn, SurveyStatusOut
 from app.services.links import sign_token
 
 router = APIRouter()
-
 
 @router.post("/api/tg/reviews/create")
 # , _: None = Depends(require_bot_auth)
