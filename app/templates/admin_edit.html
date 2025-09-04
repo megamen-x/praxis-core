@@ -29,8 +29,11 @@
       <input id="end_at" class="form-control brutal-input" type="datetime-local" value="{{ (review.end_at or '')|replace(' ', 'T') }}">
     </div>
   </div>
-  <div class="mt-3">
-    <button id="btn-save-review" class="btn btn-brutal">Сохранить</button>
+  <div class="col-md-12">
+    <div class="mt-3">
+      <button id="btn-save-review" class="btn btn-brutal">Сохранить</button>
+      <button id="btn-delete-review" class="btn btn-danger">Удалить</button>
+    </div>
   </div>
 </div>
 
@@ -38,26 +41,28 @@
 <div id="questions">
   {% for q in questions %}
   <div class="q-block" data-id="{{ q.question_id }}">
-    <div class="mb-2 mono">#{{ q.position }}</div>
-    <input class="form-control brutal-input mb-2 q-text" value="{{ q.question_text }}">
+    <div class="mb-2 question_label">Вопрос №{{ q.position+1 }}</div>
+    <input  class="form-control brutal-input mb-2 q-text" value="{{ q.question_text }}" rows="3">
     <div class="row g-2 align-items-center">
-      <div class="col-md-3">
+      <div class="col-md-4">
         <select class="form-select brutal-input q-type">
-          {% for t in ['text','textarea','radio','checkbox','scale','rating'] %}
-            <option value="{{ t }}" {% if q.question_type==t %}selected{% endif %}>{{ t }}</option>
-          {% endfor %}
+          <option value="text" {% if q.question_type=='text' %}selected{% endif %}>Текст (строка)</option>
+          <option value="textarea" {% if q.question_type=='textarea' %}selected{% endif %}>Текст (абзац)</option>
+          <option value="radio" {% if q.question_type=='radio' %}selected{% endif %}>Один из списка</option>
+          <option value="checkbox" {% if q.question_type=='checkbox' %}selected{% endif %}>Несколько из списка</option>
         </select>
       </div>
-      <div class="col-md-2 form-check">
-        <input class="form-check-input q-req" type="checkbox" {% if q.is_required %}checked{% endif %}> <label class="form-check-label">Обязательный</label>
+      <div class="col-md-3 form-check-colmn">
+        <div class="form-check">
+          <input class="form-check-input q-req" type="checkbox" {% if q.is_required %}checked{% endif %}> 
+          <label class="form-check-label">Обязательный</label> 
+        </div>
       </div>
-      <div class="col-md-2">
+      <div class="col-md-1">
         <input class="form-control brutal-input q-pos" type="number" value="{{ q.position }}">
       </div>
-      <div class="col-md-5">
-        <input class="form-control brutal-input q-meta" placeholder='meta JSON (options, min/max)' value="{{ q.meta|tojson }}">
-      </div>
     </div>
+    <div class="answers-ui mt-2"></div>
     <div class="mt-2">
       <button class="btn btn-sm btn-brutal btn-update">Обновить</button>
       <button class="btn btn-sm btn-danger btn-del">Удалить</button>
@@ -69,7 +74,7 @@
 <div class="q-block">
   <h5 class="mono">Добавить вопрос</h5>
   <div id="new-questions"></div>
-  <button id="btn-add-q" class="btn btn-secondary">+ вопрос</button>
+  <button id="btn-add-q" class="btn btn-secondary">Новый вопрос</button>
   <button id="btn-create" class="btn btn-brutal">Сохранить вопросы</button>
 </div>
 {% endblock %}
@@ -83,6 +88,162 @@
     return { "Content-Type":"application/json", "X-CSRF-Token": decodeURIComponent(csrf) };
   }
 
+  // Helpers for answers UI
+  function clear(el){ while(el.firstChild) el.removeChild(el.firstChild); }
+  function ensureInt(v, d){ const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; }
+  function slugify(s){ return (s||"").toString().toLowerCase().trim().replace(/\s+/g,'_').replace(/[^\w\-]+/g,'').slice(0,64) || 'opt'; }
+
+  function renderAnswers(block, type, meta={}) {
+    const ui = block.querySelector('.answers-ui');
+    clear(ui);
+
+    if (type === 'text') {
+      const input = document.createElement('input');
+      input.className = 'form-control brutal-input';
+      input.type = 'text';
+      input.placeholder = 'Пример ответа';
+      input.disabled = true;
+      ui.appendChild(input);
+      return;
+    }
+
+    if (type === 'textarea') {
+      const ta = document.createElement('textarea');
+      ta.className = 'form-control brutal-input';
+      ta.rows = 3;
+      ta.placeholder = 'Пример ответа';
+      ta.disabled = true;
+      ui.appendChild(ta);
+      return;
+    }
+
+    function addOptionRow(kind, labelText='') {
+      const row = document.createElement('div');
+      row.className = 'd-flex align-items-center gap-2 mb-2 ans-'+kind+'-row';
+      const inp = document.createElement('input');
+      inp.type = kind;
+      inp.className = 'form-check-input';
+      inp.disabled = true;
+      const txt = document.createElement('input');
+      txt.type = 'text';
+      txt.className = 'form-control brutal-input ans-'+kind+'-label';
+      txt.placeholder = 'Вариант ответа';
+      txt.value = labelText || '';
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-sm btn-outline-danger ans-del-row';
+      del.textContent = '×';
+      del.addEventListener('click', () => row.remove());
+      row.append(inp, txt, del);
+      return row;
+    }
+
+    if (type === 'radio' || type === 'checkbox') {
+      const list = document.createElement('div');
+      list.className = 'ans-'+type+'-list';
+      // prefill options
+      if (meta && Array.isArray(meta.options) && meta.options.length) {
+        meta.options.forEach(o => list.appendChild(addOptionRow(type, o.label ?? o.value ?? '')));
+      } else {
+        list.appendChild(addOptionRow(type, ''));
+      }
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn-sm btn-secondary mt-1 ans-add-row';
+      addBtn.textContent = '+ Добавить вариант';
+      addBtn.addEventListener('click', () => list.appendChild(addOptionRow(type, '')));
+      ui.append(list, addBtn);
+      return;
+    }
+  }
+
+  function collectMeta(block) {
+    const type = block.querySelector('.q-type').value;
+    if (type === 'radio' || type === 'checkbox') {
+      const selector = type === 'radio' ? '.ans-radio-label' : '.ans-checkbox-label';
+      const labels = Array.from(block.querySelectorAll(selector)).map(i => i.value.trim()).filter(Boolean);
+      const options = labels.map(l => ({ label: l, value: slugify(l) }));
+      return { options };
+    }
+    return {}; // text / textarea
+  }
+
+  function setupExistingBlocks() {
+    document.querySelectorAll('#questions .q-block').forEach(block => {
+      const typeSel = block.querySelector('.q-type');
+      let meta = {};
+      try { meta = JSON.parse(block.getAttribute('data-meta') || '{}'); } catch(e){}
+      renderAnswers(block, typeSel.value, meta);
+      typeSel.addEventListener('change', () => renderAnswers(block, typeSel.value, {}));
+
+      // bind update
+      block.querySelector('.btn-update').addEventListener('click', async () => {
+        const id = block.dataset.id;
+        const payload = {
+          question_text: block.querySelector('.q-text').value,
+          question_type: typeSel.value,
+          is_required: block.querySelector('.q-req').checked,
+          position: parseInt(block.querySelector('.q-pos').value || '0'),
+          meta: collectMeta(block),
+        };
+        const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
+        if (!res.ok) { alert('Ошибка обновления'); return; }
+        location.reload();
+      });
+
+      // bind delete question
+      block.querySelector('.btn-del').addEventListener('click', async () => {
+        const id = block.dataset.id;
+        if (!confirm('Удалить вопрос?')) return;
+        const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, { method:'DELETE', headers: headers() });
+        if (!res.ok) { alert('Ошибка удаления'); return; }
+        location.reload();
+      });
+    });
+  }
+
+  function createNewBlock() {
+    const el = document.createElement('div');
+    el.className = 'q-block';
+    el.innerHTML = `
+      <input class="form-control brutal-input mb-2 q-text" placeholder="Текст вопроса">
+      <div class="row g-2 align-items-center">
+        <div class="col-md-4">
+          <select class="form-select brutal-input q-type">
+            <option value="text">Текст (строка)</option>
+            <option value="textarea">Текст (абзац)</option>
+            <option value="radio">Один из списка</option>
+            <option value="checkbox">Несколько из списка</option>
+          </select>
+        </div>
+        <div class="col-md-3 form-check">
+          <input class="form-check-input q-req" type="checkbox"> <label class="form-check-label">Обязательный</label>
+        </div>
+        <div class="col-md-2">
+          <input class="form-control brutal-input q-pos" type="number" value="0">
+        </div>
+      </div>
+      <div class="answers-ui mt-2"></div>
+    `;
+    const typeSel = el.querySelector('.q-type');
+    renderAnswers(el, typeSel.value, {});
+    typeSel.addEventListener('change', () => renderAnswers(el, typeSel.value, {}));
+    return el;
+  }
+
+  function collectNewItems() {
+    return Array.from(document.querySelectorAll('#new-questions .q-block')).map(b => {
+      return {
+        question_text: b.querySelector('.q-text').value,
+        question_type: b.querySelector('.q-type').value,
+        is_required: b.querySelector('.q-req').checked,
+        position: parseInt(b.querySelector('.q-pos').value || '0'),
+        meta: collectMeta(b),
+      };
+    });
+  }
+
+  // Review save
   document.querySelector('#btn-save-review').addEventListener('click', async () => {
     const payload = {
       title: document.querySelector('#title').value,
@@ -95,71 +256,28 @@
     if (!res.ok) alert('Ошибка сохранения');
   });
 
-  document.querySelectorAll('#questions .q-block').forEach(block => {
-    block.querySelector('.btn-update').addEventListener('click', async () => {
-      const id = block.dataset.id;
-      const payload = {
-        question_text: block.querySelector('.q-text').value,
-        question_type: block.querySelector('.q-type').value,
-        is_required: block.querySelector('.q-req').checked,
-        position: parseInt(block.querySelector('.q-pos').value || '0'),
-      };
-      const meta = block.querySelector('.q-meta').value;
-      if (meta) try { payload.meta = JSON.parse(meta); } catch(e){}
-      const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
-      if (!res.ok) alert('Ошибка обновления');
-      location.reload();
-    });
-    block.querySelector('.btn-del').addEventListener('click', async () => {
-      const id = block.dataset.id;
-      if (!confirm('Удалить вопрос?')) return;
-      const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, { method:'DELETE', headers: headers() });
-      if (!res.ok) alert('Ошибка удаления');
-      location.reload();
-    });
+  // Review delete
+  document.querySelector('#btn-delete-review').addEventListener('click', async () => {
+    if (!confirm('Удалить весь опрос и все связанные анкеты/ответы? Действие необратимо.')) return;
+    const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, { method:'DELETE', headers: headers() });
+    if (!res.ok) { alert('Ошибка удаления'); return; }
+    window.location.href = '/';
   });
 
+  // Existing questions init
+  setupExistingBlocks();
+
+  // New questions
   const newWrap = document.querySelector('#new-questions');
   document.querySelector('#btn-add-q').addEventListener('click', () => {
-    const el = document.createElement('div');
-    el.className = 'q-block';
-    el.innerHTML = `
-      <input class="form-control brutal-input mb-2 q-text" placeholder="Текст вопроса">
-      <div class="row g-2 align-items-center">
-        <div class="col-md-3">
-          <select class="form-select brutal-input q-type">
-            ${['text','textarea','radio','checkbox','scale','rating'].map(t=>`<option>${t}</option>`).join('')}
-          </select>
-        </div>
-        <div class="col-md-2 form-check">
-          <input class="form-check-input q-req" type="checkbox"> <label class="form-check-label">Обязательный</label>
-        </div>
-        <div class="col-md-2">
-          <input class="form-control brutal-input q-pos" type="number" value="0">
-        </div>
-        <div class="col-md-5">
-          <input class="form-control brutal-input q-meta" placeholder='meta JSON (options, min/max)'>
-        </div>
-      </div>
-    `;
-    newWrap.appendChild(el);
+    newWrap.appendChild(createNewBlock());
   });
 
   document.querySelector('#btn-create').addEventListener('click', async () => {
-    const items = Array.from(newWrap.querySelectorAll('.q-block')).map(b => {
-      const payload = {
-        question_text: b.querySelector('.q-text').value,
-        question_type: b.querySelector('.q-type').value,
-        is_required: b.querySelector('.q-req').checked,
-        position: parseInt(b.querySelector('.q-pos').value || '0'),
-      };
-      const meta = b.querySelector('.q-meta').value;
-      if (meta) try { payload.meta = JSON.parse(meta); } catch(e){}
-      return payload;
-    });
+    const items = collectNewItems();
     if (!items.length) return;
     const res = await fetch(`/api/reviews/${reviewId}/questions?t=${token}`, { method:'POST', headers: headers(), body: JSON.stringify(items) });
-    if (!res.ok) alert('Ошибка создания');
+    if (!res.ok) { alert('Ошибка создания'); return; }
     location.reload();
   });
 </script>
