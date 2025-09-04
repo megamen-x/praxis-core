@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 
 class Side(BaseModel):
+    # ЕЩЕ СЧИТАТЬ, СКОЛЬКО ЧЕЛОВЕК ОТМЕТИЛИ ДАННОЕ КАЧЕСТВО!!!
     side: Literal['strong', 'weak'] = Field(..., description="Defining the person's side: whether this quality is their strong or weak side")
     side_description: str = Field(..., description="Description of which specific quality is being considered")
     side_pick_explanation: str = Field(..., description="Explanation of why, based on the user's answers, this quality is considered strong or weak")
