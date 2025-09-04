@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update
-from app.db.session import get_db
+from db.session import get_db
 from app.models import Survey, Review, Question, Answer, SurveyStatus
 from app.schemas.answer import SaveAnswersIn
 from app.core.security import issue_csrf, verify_csrf
