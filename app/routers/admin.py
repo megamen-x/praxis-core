@@ -168,11 +168,9 @@ def update_question(question_id: str, patch: QuestionUpdate, request: Request, d
             new_opt = QuestionOption(
                 question_id=question.question_id,
                 option_text=opt_data.option_text,
-                value=opt_data.value or opt_data.option_text,
                 position=opt_data.position
             )
             db.add(new_opt)
-            
     db.commit()
     return {"ok": True}
 
