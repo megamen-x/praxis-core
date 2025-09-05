@@ -31,7 +31,7 @@ def admin_review_page(review_id: str, request: Request, t: str = Query(...), db:
     for assoc in q_associations:
         q = assoc.question
         # Собираем опции в простой формат для JS
-        options = [{"option_id": o.option_id, "option_text": o.option_text, "value": o.value} for o in q.options]
+        options = [{"option_id": o.option_id, "option_text": o.option_text} for o in q.options]
         
         qctx.append({
             "question_id": q.question_id,
@@ -114,14 +114,14 @@ def link_questions_to_review(review_id: str, items: list[QuestionCreate], reques
         )
         db.add(q)
         
+        print(it)
         # 2. Если есть опции, создаем их и привязываем к вопросу
         if it.options:
-            for opt_data in it.options:
+            for i, opt_data in enumerate(it.options):
                 opt = QuestionOption(
                     question=q,
                     option_text=opt_data.option_text,
-                    value=opt_data.value or opt_data.option_text,
-                    position=opt_data.position
+                    position=i
                 )
                 db.add(opt)
         

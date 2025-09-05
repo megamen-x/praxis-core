@@ -157,15 +157,17 @@
     }
   }
 
-  function collectMeta(block) {
+  function collectOptions(block) {
     const type = block.querySelector('.q-type').value;
     if (type === 'radio' || type === 'checkbox') {
       const selector = type === 'radio' ? '.ans-radio-label' : '.ans-checkbox-label';
-      const labels = Array.from(block.querySelectorAll(selector)).map(i => i.value.trim()).filter(Boolean);
-      const options = labels.map(l => ({ label: l, value: slugify(l) }));
-      return { options };
+      const labels = Array.from(block.querySelectorAll(selector))
+        .map(i => i.value.trim())
+        .filter(Boolean);
+      return labels.map((text, idx) => ({ option_text: text, position: idx }));
     }
-    return {}; // text / textarea
+    // для text/textarea — опций нет
+    return null;
   }
 
   function setupExistingBlocks() {
@@ -179,14 +181,20 @@
       // bind update
       block.querySelector('.btn-update').addEventListener('click', async () => {
         const id = block.dataset.id;
+        const typeSel = block.querySelector('.q-type');
+        const opts = collectOptions(block);
+
         const payload = {
           question_text: block.querySelector('.q-text').value,
-          question_type: typeSel.value,
-          is_required: block.querySelector('.q-req').checked,
-          position: parseInt(block.querySelector('.q-pos').value || '0'),
-          meta: collectMeta(block),
+          question_type: typeSel.value
         };
-        const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
+        if (opts !== null) payload.options = opts;
+
+        const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, {
+          method:'PATCH',
+          headers: headers(),
+          body: JSON.stringify(payload)
+        });
         if (!res.ok) { alert('Ошибка обновления'); return; }
         location.reload();
       });
@@ -233,13 +241,15 @@
 
   function collectNewItems() {
     return Array.from(document.querySelectorAll('#new-questions .q-block')).map(b => {
-      return {
+      const opts = collectOptions(b);
+      const item = {
         question_text: b.querySelector('.q-text').value,
         question_type: b.querySelector('.q-type').value,
         is_required: b.querySelector('.q-req').checked,
         position: parseInt(b.querySelector('.q-pos').value || '0'),
-        meta: collectMeta(b),
       };
+      if (opts !== null) item.options = opts; // поле не шлём для text/textarea
+      return item;
     });
   }
 
@@ -259,7 +269,9 @@
   // Review delete
   document.querySelector('#btn-delete-review').addEventListener('click', async () => {
     if (!confirm('Удалить весь опрос и все связанные анкеты/ответы? Действие необратимо.')) return;
-    const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, { method:'DELETE', headers: headers() });
+    const res = await fetch(`/api/reviews/${reviewId}/questions/${id}?t=${token}`, {
+      method:'DELETE', headers: headers()
+    });
     if (!res.ok) { alert('Ошибка удаления'); return; }
     window.location.href = '/';
   });

@@ -18,7 +18,6 @@ class QuestionOption(Base):
     option_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     question_id: Mapped[str] = mapped_column(String, ForeignKey("questions.question_id"), nullable=False, index=True)
     option_text: Mapped[str] = mapped_column(Text, nullable=False)
-    value: Mapped[str | None] = mapped_column(String, nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     question = relationship("Question", back_populates="options")
