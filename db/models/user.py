@@ -1,4 +1,4 @@
-# app/models/user.py
+# db/models/user.py
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Boolean, DateTime, func
 from db import Base

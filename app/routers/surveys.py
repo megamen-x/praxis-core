@@ -1,14 +1,13 @@
 # app/routers/surveys.py
-import json
 from datetime import datetime, timezone
-from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from sqlalchemy import select, update
+from sqlalchemy import select
 from db.session import get_db
-from app.models import Survey, Review, Question, Answer, SurveyStatus
+from db.models import Survey, Review, Question, Answer, SurveyStatus, ReviewQuestionLink, QuestionType, QuestionOption
+from sqlalchemy.orm import joinedload
 from app.schemas.answer import SaveAnswersIn
 from app.core.security import issue_csrf, verify_csrf
 from app.services.links import verify_token
@@ -30,31 +29,21 @@ def form_page(survey_id: str, request: Request, t: str = Query(...), db: Session
     survey = db.get(Survey, survey_id)
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
-    review = db.get(Review, survey.review_id)
-    if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
-    # if review.end_at and review.end_at < utcnow():
-    #     raise HTTPException(status_code=410, detail="Deadline passed")
+    review = db.query(Review).options(
+        joinedload(Review.question_associations).joinedload(ReviewQuestionLink.question).joinedload(Question.options)
+    ).filter(Review.review_id == survey.review_id).one()
 
-    rows = db.scalars(select(Question).where(Question.review_id == survey.review_id).order_by(Question.position)).all()
     questions = []
-    for q in rows:
-        meta = {}
-        if q.meta_json:
-            try:
-                meta = json.loads(q.meta_json)
-            except Exception:
-                meta = {}
-        questions.append(
-            {
-                "question_id": q.question_id,
-                "question_text": q.question_text,
-                "question_type": q.question_type.value if hasattr(q.question_type, "value") else str(q.question_type),
-                "is_required": bool(q.is_required),
-                "position": q.position,
-                "meta": meta,
-            }
-        )
+    for assoc in review.question_associations:
+        q = assoc.question
+        options = [{"option_id": o.option_id, "option_text": o.option_text, "value": o.value} for o in q.options]
+        questions.append({
+            "question_id": q.question_id,
+            "question_text": q.question_text,
+            "question_type": q.question_type.value,
+            "is_required": assoc.is_required,
+            "options": options,
+        })
 
     response = templates.TemplateResponse(
         "form.html",
@@ -98,25 +87,33 @@ def save_answers(
     #     raise HTTPException(status_code=410, detail="Deadline passed")
 
     # Upsert answers
-    qids = set(payload.answers.keys())
-    existing = db.scalars(
-        select(Answer).where(Answer.survey_id == survey_id, Answer.question_id.in_(list(qids)))
-    ).all()
-    existing_map = {(a.question_id): a for a in existing}
+    db.query(Answer).filter(Answer.survey_id == survey_id).delete()
+    db.flush()
 
-    for qid, val in payload.answers.items():
-        data_json = json.dumps(val, ensure_ascii=False)
-        if qid in existing_map:
-            existing_map[qid].response_data = data_json
-            existing_map[qid].evaluator_user_id = survey.evaluator_user_id
-        else:
-            a = Answer(
-                question_id=qid,
-                survey_id=survey_id,
-                evaluator_user_id=survey.evaluator_user_id,
-                response_data=data_json,
-            )
-            db.add(a)
+    for answer_data in payload.answers:
+        question = db.get(Question, answer_data.question_id)
+        if not question:
+            continue # Пропускаем ответ на несуществующий вопрос
+
+        # Создаем основной объект ответа
+        new_answer = Answer(
+            survey_id=survey_id,
+            question_id=question.question_id,
+        )
+
+        if question.question_type in (QuestionType.text, QuestionType.textarea):
+            new_answer.response_text = answer_data.response_text
+        
+        elif question.question_type in (QuestionType.radio, QuestionType.checkbox):
+            if answer_data.selected_option_ids:
+                # Находим объекты опций по ID
+                options = db.scalars(
+                    select(QuestionOption).where(QuestionOption.option_id.in_(answer_data.selected_option_ids))
+                ).all()
+                # SQLAlchemy сама создаст записи в AnswerSelection
+                new_answer.selected_options.extend(options)
+        
+        db.add(new_answer)
 
     # Update survey status
     if final:

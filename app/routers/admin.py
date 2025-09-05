@@ -6,23 +6,15 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update, delete
-from app.db.session import get_db
+from db.session import get_db
 from app.core.security import verify_csrf, issue_csrf
-from app.models import Review, Question, QuestionType, ReviewStatus
+from db.models import Review, Question, QuestionType, QuestionOption, ReviewQuestionLink
 from app.schemas.review import UpdateReviewIn
-from app.schemas.question import QuestionCreate, QuestionUpdate
+from app.schemas.question import QuestionCreate, QuestionUpdate, ReviewQuestionLinkUpdate
 from app.services.links import verify_token
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
-
-ALLOWED_QTYPES = {"text", "textarea", "radio", "checkbox"}
-
-def _validate_qtype(qt: str) -> str:
-    if qt not in ALLOWED_QTYPES:
-        raise HTTPException(status_code=422, detail=f"Unsupported question_type '{qt}'")
-    return qt
-
 
 @router.get("/admin/reviews/{review_id}", response_class=HTMLResponse)
 def admin_review_page(review_id: str, request: Request, t: str = Query(...), db: Session = Depends(get_db)):
@@ -33,26 +25,23 @@ def admin_review_page(review_id: str, request: Request, t: str = Query(...), db:
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
-    questions = db.scalars(select(Question).where(Question.review_id == review_id).order_by(Question.position)).all()
+    q_associations = review.question_associations
+    
     qctx = []
-    for q in questions:
-        meta = {}
-        if q.meta_json:
-            try:
-                meta = json.loads(q.meta_json)
-            except Exception:
-                meta = {}
-        qtype_str = q.question_type.value if hasattr(q.question_type, "value") else str(q.question_type)
-        qctx.append(
-            {
-                "question_id": q.question_id,
-                "question_text": q.question_text,
-                "question_type": qtype_str,
-                "is_required": bool(q.is_required),
-                "position": q.position,
-                "meta": meta,
-            }
-        )
+    for assoc in q_associations:
+        q = assoc.question
+        # Собираем опции в простой формат для JS
+        options = [{"option_id": o.option_id, "option_text": o.option_text, "value": o.value} for o in q.options]
+        
+        qctx.append({
+            "question_id": q.question_id,
+            "question_text": q.question_text,
+            "question_type": q.question_type.value,
+            "options": options,
+            # Эти данные теперь берем из association
+            "is_required": assoc.is_required,
+            "position": assoc.position,
+        })
 
     random_bg_img = randint(1, 5)
     response = templates.TemplateResponse(
@@ -109,47 +98,45 @@ def delete_review(review_id: str, request: Request, db: Session = Depends(get_db
 
 
 @router.post("/api/reviews/{review_id}/questions")
-def create_questions(review_id: str, items: list[QuestionCreate], request: Request, db: Session = Depends(get_db), t: str = Query(...)):
+def link_questions_to_review(review_id: str, items: list[QuestionCreate], request: Request, db: Session = Depends(get_db), t: str = Query(...)):
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
     if not verify_csrf(request, request.headers.get("X-CSRF-Token", ""), scope=f"admin:{review_id}"):
         raise HTTPException(status_code=403, detail="Bad CSRF")
 
-    created = 0
+    created_links = 0
     for it in items:
-        qtype = _validate_qtype(it.question_type)
-        meta = it.meta or {}
-        # sanitize meta: only keep options for radio/checkbox
-        if qtype in {"radio", "checkbox"}:
-            opts = meta.get("options") or []
-            # normalize to {label, value}
-            norm = []
-            for o in opts:
-                if isinstance(o, dict):
-                    lbl = (o.get("label") or o.get("value") or "").strip()
-                    val = (o.get("value") or o.get("label") or "").strip()
-                    if lbl:
-                        norm.append({"label": lbl, "value": val})
-                elif isinstance(o, str) and o.strip():
-                    s = o.strip()
-                    norm.append({"label": s, "value": s})
-            meta_json = json.dumps({"options": norm}, ensure_ascii=False) if norm else json.dumps({"options": []})
-        else:
-            meta_json = None
-
+        # 1. Создаем сам вопрос в "банке"
         q = Question(
-            review_id=review_id,
             question_text=it.question_text,
-            question_type=QuestionType(qtype),
-            is_required=1 if it.is_required else 0,
-            position=it.position or 0,
-            meta_json=meta_json,
+            question_type=QuestionType(it.question_type)
         )
         db.add(q)
-        created += 1
+        
+        # 2. Если есть опции, создаем их и привязываем к вопросу
+        if it.options:
+            for opt_data in it.options:
+                opt = QuestionOption(
+                    question=q,
+                    option_text=opt_data.option_text,
+                    value=opt_data.value or opt_data.option_text,
+                    position=opt_data.position
+                )
+                db.add(opt)
+        
+        # 3. Создаем связь между ревью и новым вопросом
+        link = ReviewQuestionLink(
+            review_id=review_id,
+            question=q,
+            position=it.position,
+            is_required=it.is_required
+        )
+        db.add(link)
+        created_links += 1
+
     db.commit()
-    return {"ok": True, "count": created}
+    return {"ok": True, "count": created_links}
 
 
 @router.patch("/api/questions/{question_id}")
@@ -160,49 +147,73 @@ def update_question(question_id: str, patch: QuestionUpdate, request: Request, d
     if not verify_csrf(request, request.headers.get("X-CSRF-Token", ""), scope=f"admin:{review_id}"):
         raise HTTPException(status_code=403, detail="Bad CSRF")
 
-    data = patch.model_dump(exclude_unset=True)
-    if "question_type" in data:
-        data["question_type"] = QuestionType(_validate_qtype(data["question_type"]))
-
-    meta_json = None
-    if "meta" in data:
-        qtype = (data.get("question_type").value if hasattr(data.get("question_type"), "value") else data.get("question_type"))
-        meta = data.pop("meta") or {}
-        if qtype in {"radio", "checkbox"}:
-            opts = meta.get("options") or []
-            norm = []
-            for o in opts:
-                if isinstance(o, dict):
-                    lbl = (o.get("label") or o.get("value") or "").strip()
-                    val = (o.get("value") or o.get("label") or "").strip()
-                    if lbl:
-                        norm.append({"label": lbl, "value": val})
-                elif isinstance(o, str) and o.strip():
-                    s = o.strip()
-                    norm.append({"label": s, "value": s})
-            meta_json = json.dumps({"options": norm}, ensure_ascii=False)
-        else:
-            meta_json = None
-
-    values = {k: v for k, v in data.items() if k != "meta_json"}
-    if meta_json is not None:
-        values["meta_json"] = meta_json
-
-    stmt = update(Question).where(Question.question_id == question_id).values(values)
-    db.execute(stmt)
+    question = db.get(Question, question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+        
+    patch_data = patch.model_dump(exclude_unset=True)
+    
+    # Обновляем текст вопроса
+    if 'question_text' in patch_data:
+        question.question_text = patch_data['question_text']
+        
+    # Обновляем опции (сложная логика: удаляем старые, добавляем новые)
+    if 'options' in patch_data:
+        # Удаляем старые опции
+        for opt in question.options:
+            db.delete(opt)
+        db.flush() # Применяем удаление
+        # Добавляем новые
+        for opt_data in patch.options:
+            new_opt = QuestionOption(
+                question_id=question.question_id,
+                option_text=opt_data.option_text,
+                value=opt_data.value or opt_data.option_text,
+                position=opt_data.position
+            )
+            db.add(new_opt)
+            
     db.commit()
     return {"ok": True}
 
 
-@router.delete("/api/questions/{question_id}")
-def delete_question(question_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
+@router.patch("/api/reviews/{review_id}/questions/{question_id}")
+def update_review_question_link(review_id: str, question_id: str, patch: ReviewQuestionLinkUpdate, request: Request, db: Session = Depends(get_db), t: str = Query(...)):
+    token = verify_token(t)
+    if not token or token.get("role") != "admin" or token.get("sub") != review_id:
+        raise HTTPException(status_code=401)
+    if not verify_csrf(request, request.headers.get("X-CSRF-Token", ""), scope=f"admin:{review_id}"):
+        raise HTTPException(status_code=403, detail="Bad CSRF")
+    
+    link = db.get(ReviewQuestionLink, (review_id, question_id))
+    if not link:
+        raise HTTPException(status_code=404, detail="Question link not found in this review")
+        
+    patch_data = patch.model_dump(exclude_unset=True)
+    if not patch_data:
+        return {"ok": True, "message": "No changes"}
+        
+    for key, value in patch_data.items():
+        setattr(link, key, value)
+        
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/api/reviews/{review_id}/questions/{question_id}")
+def unlink_question_from_review(review_id: str, question_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...)):
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
     if not verify_csrf(request, request.headers.get("X-CSRF-Token", ""), scope=f"admin:{review_id}"):
         raise HTTPException(status_code=403, detail="Bad CSRF")
 
-    stmt = delete(Question).where(Question.question_id == question_id)
-    db.execute(stmt)
+    stmt = delete(ReviewQuestionLink).where(
+        ReviewQuestionLink.review_id == review_id,
+        ReviewQuestionLink.question_id == question_id
+    )
+    result = db.execute(stmt)
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Link not found")
     db.commit()
     return {"ok": True}

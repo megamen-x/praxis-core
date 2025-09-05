@@ -5,7 +5,7 @@ from sqlalchemy import select, func
 from db.session import get_db
 from app.core.security import require_bot_auth
 from app.core.config import settings
-from app.models import User, Review, ReviewStatus, Survey, SurveyStatus
+from db.models import User, Review, ReviewStatus, Survey, SurveyStatus
 from app.schemas.review import CreateReviewIn, ReviewOut
 from app.schemas.survey import CreateSurveysIn, SurveyStatusOut
 from app.services.links import sign_token
@@ -17,10 +17,11 @@ router = APIRouter()
 def tg_create_review(
     payload: CreateReviewIn, request: Request, db: Session = Depends(get_db)
 ):
+    
     created_by = db.get(User, payload.created_by_user_id)
     subject = db.get(User, payload.subject_user_id)
     if not created_by or not subject:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=f"User not found: {payload.created_by_user_id}, {payload.subject_user_id}.")
     review = Review(
         created_by_user_id=payload.created_by_user_id,
         subject_user_id=payload.subject_user_id,

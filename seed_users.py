@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-from app.db.session import SessionLocal, Base, engine
-from app.models import User
+from db.session import LocalSession, engine
+from db.models import User
+from db import Base
 
 def get_or_create(db, email, **kwargs):
     obj = db.query(User).filter(User.email == email).first()
@@ -14,7 +15,7 @@ def get_or_create(db, email, **kwargs):
 
 def main():
     Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
+    db = LocalSession()
     try:
         hr = get_or_create(db, "hr@example.com", first_name="Hannah", last_name="HR", department="HR", can_create_review=True)
         subject = get_or_create(db, "subject@example.com", first_name="Sam", last_name="Subject", department="R&D")

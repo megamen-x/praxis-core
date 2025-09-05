@@ -18,16 +18,16 @@
       {% elif q.question_type == 'radio' %}
         {% for opt in (q.meta.options or []) %}
           <div class="form-check">
-            <input class="form-check-input" type="radio" name="{{ q.question_id }}" value="{{ opt.value }}" {% if q.is_required %}required{% endif %}>
-            <label class="form-check-label">{{ opt.label }}</label>
+            <input class="form-check-input" type="radio" name="{{ q.question_id }}" value="{{ opt.option_id }}" {% if q.is_required %}required{% endif %}>
+            <label class="form-check-label">{{ opt.option_text }}</label>
           </div>
         {% endfor %}
 
       {% elif q.question_type == 'checkbox' %}
         {% for opt in (q.meta.options or []) %}
           <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="{{ q.question_id }}[]" value="{{ opt.value }}">
-            <label class="form-check-label">{{ opt.label }}</label>
+            <input class="form-check-input" type="checkbox" name="{{ q.question_id }}[]" value="{{ opt.option_id }}">
+            <label class="form-check-label">{{ opt.option_text }}</label>
           </div>
         {% endfor %}
 

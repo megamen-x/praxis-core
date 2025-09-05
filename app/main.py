@@ -3,7 +3,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app.core.config import settings
-from db.session import Base, engine
+from db.session import engine
+from db import Base
 from app.routers import admin, surveys, tg
 
 app = FastAPI(title=settings.APP_NAME, debug=settings.DEBUG)
