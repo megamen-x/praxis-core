@@ -15,6 +15,7 @@ class User(Base):
     job_title: Mapped[str | None] = mapped_column(String, nullable=True)
     department: Mapped[str | None] = mapped_column(String, nullable=True)
     email: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    telegram_chat_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     can_create_review: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped["DateTime"] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

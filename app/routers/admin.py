@@ -31,7 +31,16 @@ def admin_review_page(review_id: str, request: Request, t: str = Query(...), db:
     for assoc in q_associations:
         q = assoc.question
         # Собираем опции в простой формат для JS
-        options = [{"option_id": o.option_id, "option_text": o.option_text} for o in q.options]
+        if q.question_type in ["radio", "checkbox"]:
+            options = [{"option_id": o.option_id, "option_text": o.option_text} for o in q.options]
+        elif q.question_type == "range_slider" and q.meta_json:
+            import json
+            try:
+                options = json.loads(q.meta_json)
+            except:
+                options = {"min": 1, "max": 10, "step": 1}
+        else:
+            options = []
         
         qctx.append({
             "question_id": q.question_id,
@@ -91,7 +100,6 @@ def delete_review(review_id: str, request: Request, db: Session = Depends(get_db
     review = db.get(Review, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
-    # ORM cascade will remove questions, surveys and their answers (configured in models)
     db.delete(review)
     db.commit()
     return {"ok": True}
@@ -112,11 +120,16 @@ def link_questions_to_review(review_id: str, items: list[QuestionCreate], reques
             question_text=it.question_text,
             question_type=QuestionType(it.question_type)
         )
+        
+        # 2. Сохраняем метаданные для range_slider
+        if it.question_type == "range_slider" and it.options:
+            import json
+            q.meta_json = json.dumps(it.options)
+        
         db.add(q)
         
-        print(it)
-        # 2. Если есть опции, создаем их и привязываем к вопросу
-        if it.options:
+        # 3. Если есть опции (для radio/checkbox), создаем их и привязываем к вопросу
+        if it.question_type in ["radio", "checkbox"] and it.options:
             for i, opt_data in enumerate(it.options):
                 opt = QuestionOption(
                     question=q,
@@ -159,18 +172,24 @@ def update_question(question_id: str, patch: QuestionUpdate, request: Request, d
         
     # Обновляем опции (сложная логика: удаляем старые, добавляем новые)
     if 'options' in patch_data:
-        # Удаляем старые опции
-        for opt in question.options:
-            db.delete(opt)
-        db.flush() # Применяем удаление
-        # Добавляем новые
-        for opt_data in patch.options:
-            new_opt = QuestionOption(
-                question_id=question.question_id,
-                option_text=opt_data.option_text,
-                position=opt_data.position
-            )
-            db.add(new_opt)
+        if question.question_type in ["radio", "checkbox"]:
+            # Удаляем старые опции для radio/checkbox
+            for opt in question.options:
+                db.delete(opt)
+            db.flush() # Применяем удаление
+            # Добавляем новые опции
+            for opt_data in patch.options:
+                new_opt = QuestionOption(
+                    question_id=question.question_id,
+                    option_text=opt_data.option_text,
+                    position=opt_data.position
+                )
+                db.add(new_opt)
+        elif question.question_type == "range_slider":
+            # Сохраняем метаданные для range_slider
+            import json
+            question.meta_json = json.dumps(patch.options)
+
     db.commit()
     return {"ok": True}
 
@@ -183,7 +202,14 @@ def update_review_question_link(review_id: str, question_id: str, patch: ReviewQ
     if not verify_csrf(request, request.headers.get("X-CSRF-Token", ""), scope=f"admin:{review_id}"):
         raise HTTPException(status_code=403, detail="Bad CSRF")
     
-    link = db.get(ReviewQuestionLink, (review_id, question_id))
+    # Ищем связь по составному ключу
+    link = db.execute(
+        select(ReviewQuestionLink).where(
+            ReviewQuestionLink.review_id == review_id,
+            ReviewQuestionLink.question_id == question_id
+        )
+    ).scalar_one_or_none()
+    
     if not link:
         raise HTTPException(status_code=404, detail="Question link not found in this review")
         

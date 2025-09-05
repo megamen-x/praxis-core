@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "Proxis Core"
     DEBUG: bool = True
+    NOTIFICATION_TIMER: int = 60
     SECRET_KEY: str = "change-me-in-env"
     DATABASE_URL: str = "sqlite:///./app.db"
     TG_BOT_TOKEN: str = "change-me-in-env"

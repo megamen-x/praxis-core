@@ -11,6 +11,7 @@ class QuestionType(str, enum.Enum):
     checkbox = "checkbox"
     text = "text"
     textarea = "textarea"
+    range_slider = "range_slider"
 
 class QuestionOption(Base):
     __tablename__ = "question_options"
