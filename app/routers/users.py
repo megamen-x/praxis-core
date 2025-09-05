@@ -6,7 +6,6 @@ from db.session import get_db
 from db.models import User, Review, Report, Survey
 from app.schemas.user import UserOut, UserCreate, UserUpdate
 from app.schemas.report import ReportWithReviewOut
-from app.schemas.review import ReviewWithUserOut
 from app.schemas.survey import SurveyWithUserOut
 from app.services.export import export_database_to_json, export_database_to_csv, export_user_data
 from fastapi.responses import JSONResponse, Response
@@ -34,7 +33,6 @@ def get_user(user_id: str, db: Session = Depends(get_db)):
 @router.post("/api/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     """Создать нового пользователя"""
-    # Проверяем уникальность email если он указан
     if user_data.email:
         existing_user = db.execute(
             select(User).where(User.email == user_data.email)
@@ -51,6 +49,35 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     db.refresh(user)
     return user
 
+@router.post("/api/users/{user_id}/check-telegram", status_code=status.HTTP_201_CREATED)
+def check_telegram(user_id: str, db: Session = Depends(get_db)):
+    """Проверить Telegram у человека"""
+    user = db.get(User, user_id=user_id)
+    if not user:
+        return {'result': 'error'}
+    return {'is_registered': 1 if user.tg_chat_id else 0}
+
+@router.post("/api/users/{user_id}/is_admin", status_code=status.HTTP_201_CREATED)
+def is_admin(user_id: str, db: Session = Depends(get_db)):
+    """Проверить человека на возможность создавать ревью"""
+    user = db.get(User, user_id=user_id)
+    if not user:
+        return {'result': 'error'}
+    return {'is_admin': 1 if user.can_create_review else 0}
+
+@router.post("/api/users/{user_id}/protote_to_admin", status_code=status.HTTP_201_CREATED)
+def promote_to_admin(user_id: str, db: Session = Depends(get_db)):
+    """Сделать человека админом"""
+    user = db.get(User, user_id=user_id)
+    if not user:
+        return {'result': 'error'}
+    if user.can_create_review:
+        return {'result': 'already_admin'}
+    else:
+        user.can_create_review = True
+        db.commit()
+        db.refresh(user)
+        return {'result': 'ok'}
 
 @router.put("/api/users/{user_id}", response_model=UserOut)
 def update_user(user_id: str, user_data: UserUpdate, db: Session = Depends(get_db)):
@@ -129,38 +156,31 @@ def get_user_reports(user_id: str, db: Session = Depends(get_db)):
     return result
 
 
-@router.get("/api/users/{user_id}/reviews", response_model=List[ReviewWithUserOut])
+@router.get("/api/users/{user_id}/reviews", response_model=List[ReviewOut])
 def get_user_reviews(user_id: str, db: Session = Depends(get_db)):
-    """Получить список Review по subject_user_id"""
+    """Получить список Review по created_by_user_id"""
     # Проверяем существование пользователя
-    user = db.get(User, user_id)
+    user = db.get(User, user_id=user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     # Получаем все ревью для пользователя
     reviews = db.execute(
-        select(Review, User, User)
-        .join(User, Review.created_by_user_id == User.user_id, aliased=True)
-        .join(User, Review.subject_user_id == User.user_id, aliased=True)
-        .where(Review.subject_user_id == user_id)
+        select(Review)
+        .where(Review.created_by_user_id == user_id)
     ).all()
     
     result = []
-    for review, created_by_user, subject_user in reviews:
-        result.append(ReviewWithUserOut(
+    for review, created_by_user in reviews:
+        result.append(ReviewOut(
             review_id=review.review_id,
-            created_by_user_id=review.created_by_user_id,
-            subject_user_id=review.subject_user_id,
             title=review.title,
             description=review.description,
             anonymity=review.anonymity,
             status=review.status.value,
             start_at=review.start_at,
             end_at=review.end_at,
-            created_at=review.created_at,
-            created_by_name=f"{created_by_user.first_name} {created_by_user.last_name}",
-            subject_user_name=f"{subject_user.first_name} {subject_user.last_name}"
-        ))
+        ))  
     
     return result
 

@@ -30,19 +30,3 @@ class UpdateReviewIn(BaseModel):
     anonymity: bool | None = None
     start_at: datetime | None = None
     end_at: datetime | None = None
-
-
-class ReviewWithUserOut(BaseModel):
-    """Review с дополнительной информацией о пользователях"""
-    review_id: str
-    created_by_user_id: str
-    subject_user_id: str
-    title: str
-    description: str | None = None
-    anonymity: bool
-    status: str
-    start_at: datetime | None = None
-    end_at: datetime | None = None
-    created_at: datetime
-    created_by_name: str
-    subject_user_name: str
