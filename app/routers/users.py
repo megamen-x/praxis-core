@@ -7,9 +7,11 @@ from db.models import User, Review, Report, Survey
 from app.schemas.user import UserOut, UserCreate, UserUpdate
 from app.schemas.report import ReportWithReviewOut
 from app.schemas.survey import SurveyWithUserOut
+from app.schemas.review import ReviewOut
 from app.services.export import export_database_to_json, export_database_to_csv, export_user_data
 from fastapi.responses import JSONResponse, Response
 from typing import List
+import json
 
 router = APIRouter()
 

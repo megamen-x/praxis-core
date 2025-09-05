@@ -15,22 +15,25 @@ import httpx
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.future import select
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from dotenv import dotenv_values, load_dotenv
 
 import logging
+import sys
+sys.path.append("..")
+from db import Base
+from db.session import engine, LocalSession
+from db.models.review import Review
+from db.models.user import User
+from db.models.broadcast import Broadcast
 
-from models.user import User
-from models.broadcast import Broadcast
-from models.review import Review
-from db.session import Base, engine
+config = dotenv_values("../.env")  
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Токен бота
-BOT_TOKEN = "8096053221:AAFtVtvlGyiHJOtRQWbCbd1_C2LqTVzGM9Y"
+BOT_TOKEN = config.get("BOT_TOKEN")
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
@@ -39,22 +42,19 @@ router = Router()
 dp.include_router(router)
 
 # # Создание асинхронного движка
-async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+async_session = LocalSession()
 
 # Инициализация базы данных
 async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    with LocalSession() as session:
+        Base.metadata.create_all(bind=session.get_bind())
 
 # Регистрация пользователя в БД
-async def register_user(user_id: int, username: str, first_name: str, last_name: str) -> bool:
+def register_user(user_id: int, username: str, first_name: str, last_name: str) -> bool:
     try:
-        async with async_session() as session:
+        with LocalSession() as session:
             # Проверяем, существует ли пользователь
-            result = await session.execute(
-                select(User).where(User.user_id == user_id)
-            )
-            existing_user = result.scalar_one_or_none()
+            existing_user = session.query(User).filter(User.user_id == user_id).one_or_none()
             
             if not existing_user:
                 new_user = User(
@@ -65,8 +65,7 @@ async def register_user(user_id: int, username: str, first_name: str, last_name:
                     created_at=datetime.utcnow(),
                 )
                 session.add(new_user)
-            
-            await session.commit()
+                session.commit()
             return True
             
     except Exception as e:
@@ -74,86 +73,74 @@ async def register_user(user_id: int, username: str, first_name: str, last_name:
         return False
 
 # Получение всех активных пользователей
-async def get_all_users() -> List[int]:
+def get_all_users() -> List[int]:
     try:
-        async with async_session() as session:
-            result = await session.execute(
-                select(User.user_id).where(User.is_active == True)
-            )
-            users = [row[0] for row in result.all()]
-            return users
+        with LocalSession() as session:
+            users = session.query(User.user_id).filter(User.is_active).all()
+            return [user[0] for user in users]
     except Exception as e:
         logger.error(f"Error getting users: {e}")
         return []
 
 # Получение количества пользователей
-async def get_reviews_by_user(user_id: str) -> int:
+def get_reviews_by_user(user_id: str) -> int:
     try:
-        async with async_session() as session:
-            result = await session.execute(
-                select(Review).where(Review.created_by_user_id == user_id)
-            )
-            return result.scalars().all()
+        with LocalSession() as session:
+            reviews = session.query(Review).filter(Review.created_by_user_id == user_id).all()
+            return len(reviews)
     except Exception as e:
         logger.error(f"Error getting users count: {e}")
         return 0
 
-async def get_users_count() -> int:
+def get_users_count() -> int:
     try:
-        async with async_session() as session:
-            result = await session.execute(
-                select(User)
-            )
-            return len(result.scalars().all())
+        with LocalSession() as session:
+            users = session.query(User).all()
+            return len(users)
     except Exception as e:
         logger.error(f"Error getting users count: {e}")
         return 0
 
 # Сохранение рассылки в БД
-async def save_broadcast(message_text: str, scheduled_time: datetime) -> Optional[int]:
+def save_broadcast(message_text: str, scheduled_time: datetime) -> Optional[int]:
     try:
-        async with async_session() as session:
+        with LocalSession() as session:
             new_broadcast = Broadcast(
                 message_text=message_text,
                 scheduled_time=scheduled_time
             )
             session.add(new_broadcast)
-            await session.commit()
+            session.commit()
             return new_broadcast.id
     except Exception as e:
         logger.error(f"Error saving broadcast: {e}")
         return None
 
 # Получение активных рассылок
-async def get_scheduled_broadcasts() -> List[Broadcast]:
+def get_scheduled_broadcasts() -> List[Broadcast]:
     try:
-        async with async_session() as session:
-            result = await session.execute(
-                select(Broadcast).where(
-                    Broadcast.status == 'scheduled',
-                    Broadcast.scheduled_time > datetime.utcnow()
-                ).order_by(Broadcast.scheduled_time)
-            )
-            return result.scalars().all()
+        with LocalSession() as session:
+            broadcasts = session.query(Broadcast).filter(
+                Broadcast.status == 'scheduled',
+                Broadcast.scheduled_time > datetime.utcnow()
+            ).order_by(Broadcast.scheduled_time).all()
+            return broadcasts
     except Exception as e:
         logger.error(f"Error getting broadcasts: {e}")
         return []
 
 # Обновление статуса рассылки
-async def update_broadcast_status(broadcast_id: int, status: str, 
-                                 sent_count: int = 0, failed_count: int = 0) -> bool:
+def update_broadcast_status(broadcast_id: int, status: str, 
+                            sent_count: int = 0, failed_count: int = 0) -> bool:
     try:
-        async with async_session() as session:
-            result = await session.execute(
-                select(Broadcast).where(Broadcast.id == broadcast_id)
-            )
-            broadcast = result.scalar_one_or_none()
+        with LocalSession() as session:
+            broadcast = session.query(Broadcast).filter(Broadcast.id == broadcast_id).one_or_none()
             
             if broadcast:
                 broadcast.status = status
                 broadcast.sent_count = sent_count
                 broadcast.failed_count = failed_count
-                await session.commit()
+                session.commit()
                 return True
             return False
     except Exception as e:
@@ -177,7 +164,7 @@ def create_admin_keyboard():
     builder.row(KeyboardButton(text="⬅️ Главное меню"))
     return builder.as_markup(resize_keyboard=True)
 
-ADMIN_IDS = [12345678]  # Ваш Telegram ID
+ADMIN_IDS = [879714387]  # Ваш Telegram ID
 
 # Проверка прав администратора
 def is_admin(user_id: int) -> bool:
@@ -187,7 +174,7 @@ def is_admin(user_id: int) -> bool:
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
     user = message.from_user
-    success = await register_user(
+    success = register_user(
         user_id=user.id,
         username=user.username,
         first_name=user.first_name,
@@ -251,31 +238,6 @@ async def list_forms(message: types.Message):
         logger.error(f"Error getting forms: {e}")
         await message.answer("❌ Ошибка при получении списка форм")
 
-# # Обработчик статистики
-# @router.message(F.text == "📊 Статистика")
-# async def show_stats(message: types.Message):
-#     if not is_admin(message.from_user.id):
-#         await message.answer("❌ У вас нет прав для просмотра статистики")
-#         return
-    
-#     try:
-#         total_users = await get_users_count()
-#         broadcasts = await get_scheduled_broadcasts()
-#         active_broadcasts = len(broadcasts)
-        
-#         stats_text = (
-#             "📊 Статистика бота:\n\n"
-#             f"👥 Всего пользователей: {total_users}\n"
-#             f"📨 Активных рассылок: {active_broadcasts}\n"
-#             f"🕒 Время сервера: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-#         )
-        
-#         await message.answer(stats_text)
-        
-#     except Exception as e:
-#         logger.error(f"Error getting stats: {e}")
-#         await message.answer("❌ Ошибка при получении статистики")
-
 # Обработчик создания рассылки
 @router.message(F.text == "📨 Создать рассылку")
 async def create_broadcast(message: types.Message):
@@ -298,30 +260,7 @@ async def show_active_broadcasts(message: types.Message):
         await message.answer("❌ У вас нет прав для просмотра рассылок")
         return
     
-    broadcasts = await get_scheduled_broadcasts()
-    
-    if not broadcasts:
-        await message.answer("📭 Нет активных рассылок")
-        return
-    
-    response = "📋 Активные рассылки:\n\n"
-    for broadcast in broadcasts:
-        # Обрезаем длинный текст
-        preview = broadcast.message_text[:50] + "..." if len(broadcast.message_text) > 50 else broadcast.message_text
-        response += f"ID: {broadcast.id}\n"
-        response += f"Время: {broadcast.scheduled_time.strftime('%Y-%m-%d %H:%M')}\n"
-        response += f"Текст: {preview}\n"
-        response += "─" * 20 + "\n"
-    
-    await message.answer(response)
-    
-@router.message(F.text == "📋 Вывести список")
-async def show_active_broadcasts(message: types.Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав для просмотра рассылок")
-        return
-    
-    broadcasts = await get_scheduled_broadcasts()
+    broadcasts = get_scheduled_broadcasts()
     
     if not broadcasts:
         await message.answer("📭 Нет активных рассылок")
@@ -364,7 +303,7 @@ async def handle_broadcast_creation(message: types.Message):
                 return
             
             # Сохраняем рассылку
-            broadcast_id = await save_broadcast(message_text, scheduled_time)
+            broadcast_id = save_broadcast(message_text, scheduled_time)
             
             if broadcast_id:
                 # Планируем рассылку
@@ -374,7 +313,7 @@ async def handle_broadcast_creation(message: types.Message):
                     f"✅ Рассылка запланирована!\n"
                     f"ID: {broadcast_id}\n"
                     f"Время: {scheduled_time.strftime('%Y-%m-%d %H:%M')}\n"
-                    f"Получателей: {len(await get_all_users())}"
+                    f"Получателей: {len(get_all_users())}"
                 )
             else:
                 await message.answer("❌ Ошибка при сохранении рассылки")
@@ -392,7 +331,6 @@ async def handle_broadcast_creation(message: types.Message):
 
     elif user_id in user_states and user_states[user_id] == 'form_creating_tag_subject_user_id':
         try:
-            subject_user_id = message.text.strip()
             
             async with httpx.AsyncClient() as client:
                 data = {
@@ -433,7 +371,7 @@ async def handle_broadcast_creation(message: types.Message):
 # Функция для отправки рассылки
 async def send_broadcast(broadcast_id: int, message_text: str):
     try:
-        users = await get_all_users()
+        users = get_all_users()
         success_count = 0
         fail_count = 0
         
@@ -447,7 +385,7 @@ async def send_broadcast(broadcast_id: int, message_text: str):
                 fail_count += 1
         
         # Обновляем статус рассылки
-        await update_broadcast_status(broadcast_id, 'completed', success_count, fail_count)
+        update_broadcast_status(broadcast_id, 'completed', success_count, fail_count)
         
         # Отправляем отчет админу
         report = (
@@ -465,7 +403,7 @@ async def send_broadcast(broadcast_id: int, message_text: str):
                 
     except Exception as e:
         logger.error(f"Error in broadcast {broadcast_id}: {e}")
-        await update_broadcast_status(broadcast_id, 'failed')
+        update_broadcast_status(broadcast_id, 'failed')
 
 # Планирование рассылки
 def schedule_broadcast(broadcast_id: int, message_text: str, scheduled_time: datetime):
@@ -485,7 +423,7 @@ async def schedule_delayed(delay: float, task):
 
 # Загрузка и планирование существующих рассылок при запуске
 async def load_scheduled_broadcasts():
-    broadcasts = await get_scheduled_broadcasts()
+    broadcasts = get_scheduled_broadcasts()
     for broadcast in broadcasts:
         if broadcast.scheduled_time > datetime.now():
             schedule_broadcast(broadcast.id, broadcast.message_text, broadcast.scheduled_time)
