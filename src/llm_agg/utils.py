@@ -10,3 +10,13 @@ def get_provider(base_url: str):
         "Expected it to contain 'openrouter', 'openai', or 'localhost'."
     )
     
+
+def composite_review(reviews: list[str]):
+    template = "Review №{i}"
+
+    for i, review in enumerate(reviews):
+        continue
+
+def agregate():
+    # для применения мат операций, которые будут задаваться как угодно, к полям ответов ревьюеров
+    pass
