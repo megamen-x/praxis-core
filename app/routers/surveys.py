@@ -36,13 +36,24 @@ def form_page(survey_id: str, request: Request, t: str = Query(...), db: Session
     questions = []
     for assoc in review.question_associations:
         q = assoc.question
-        options = [{"option_id": o.option_id, "option_text": o.option_text, "value": o.value} for o in q.options]
+        if q.question_type in ["radio", "checkbox"]:
+            options = [{"option_id": o.option_id, "option_text": o.option_text, "value": o.value} for o in q.options]
+        elif q.question_type == "range_slider" and q.meta_json:
+            import json
+            try:
+                meta = json.loads(q.meta_json)
+                options = meta
+            except:
+                options = {"min": 1, "max": 10, "step": 1}
+        else:
+            options = []
+        
         questions.append({
             "question_id": q.question_id,
             "question_text": q.question_text,
             "question_type": q.question_type.value,
             "is_required": assoc.is_required,
-            "options": options,
+            "meta": options,
         })
 
     response = templates.TemplateResponse(

@@ -50,6 +50,7 @@
           <option value="textarea" {% if q.question_type=='textarea' %}selected{% endif %}>Текст (абзац)</option>
           <option value="radio" {% if q.question_type=='radio' %}selected{% endif %}>Один из списка</option>
           <option value="checkbox" {% if q.question_type=='checkbox' %}selected{% endif %}>Несколько из списка</option>
+          <option value="range_slider" {% if q.question_type=='range_slider' %}selected{% endif %}>Слайдер диапазона</option>
         </select>
       </div>
       <div class="col-md-3 form-check-colmn">
@@ -118,6 +119,77 @@
       return;
     }
 
+    if (type === 'range_slider') {
+      const container = document.createElement('div');
+      container.className = 'range-slider-container';
+      
+      // Создаем слайдер
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.className = 'form-range';
+      slider.min = meta.min || 1;
+      slider.max = meta.max || 10;
+      slider.step = meta.step || 1;
+      slider.value = meta.default || Math.floor((parseInt(slider.min) + parseInt(slider.max)) / 2);
+      slider.disabled = true;
+      
+      // Создаем отображение значения
+      const valueDisplay = document.createElement('div');
+      valueDisplay.className = 'range-value mono mt-1 small';
+      valueDisplay.textContent = slider.value;
+      
+      // Создаем поля для настройки min/max
+      const settingsRow = document.createElement('div');
+      settingsRow.className = 'row g-2 mt-2';
+      
+      const minCol = document.createElement('div');
+      minCol.className = 'col-6';
+      const minLabel = document.createElement('label');
+      minLabel.className = 'form-label small';
+      minLabel.textContent = 'Минимум:';
+      const minInput = document.createElement('input');
+      minInput.type = 'number';
+      minInput.className = 'form-control form-control-sm';
+      minInput.value = meta.min || 1;
+      minInput.addEventListener('change', () => {
+        slider.min = minInput.value;
+        if (parseInt(slider.value) < parseInt(slider.min)) {
+          slider.value = slider.min;
+          valueDisplay.textContent = slider.value;
+        }
+      });
+      minCol.append(minLabel, minInput);
+      
+      const maxCol = document.createElement('div');
+      maxCol.className = 'col-6';
+      const maxLabel = document.createElement('label');
+      maxLabel.className = 'form-label small';
+      maxLabel.textContent = 'Максимум:';
+      const maxInput = document.createElement('input');
+      maxInput.type = 'number';
+      maxInput.className = 'form-control form-control-sm';
+      maxInput.value = meta.max || 10;
+      maxInput.addEventListener('change', () => {
+        slider.max = maxInput.value;
+        if (parseInt(slider.value) > parseInt(slider.max)) {
+          slider.value = slider.max;
+          valueDisplay.textContent = slider.value;
+        }
+      });
+      maxCol.append(maxLabel, maxInput);
+      
+      settingsRow.append(minCol, maxCol);
+      
+      // Обновляем отображение значения при изменении слайдера
+      slider.addEventListener('input', () => {
+        valueDisplay.textContent = slider.value;
+      });
+      
+      container.append(slider, valueDisplay, settingsRow);
+      ui.appendChild(container);
+      return;
+    }
+
     function addOptionRow(kind, labelText='') {
       const row = document.createElement('div');
       row.className = 'd-flex align-items-center gap-2 mb-2 ans-'+kind+'-row';
@@ -167,6 +239,18 @@
         .filter(Boolean);
       return labels.map((text, idx) => ({ option_text: text, position: idx }));
     }
+    if (type === 'range_slider') {
+      const container = block.querySelector('.range-slider-container');
+      if (container) {
+        const minInput = container.querySelector('input[type="number"]:first-of-type');
+        const maxInput = container.querySelector('input[type="number"]:last-of-type');
+        return {
+          min: parseInt(minInput?.value || 1),
+          max: parseInt(maxInput?.value || 10),
+          step: 1
+        };
+      }
+    }
     // для text/textarea — опций нет
     return null;
   }
@@ -204,7 +288,7 @@
       block.querySelector('.btn-del').addEventListener('click', async () => {
         const id = block.dataset.id;
         if (!confirm('Удалить вопрос?')) return;
-        const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, { method:'DELETE', headers: headers() });
+        const res = await fetch(`/api/reviews/${reviewId}/questions/${id}?t=${token}`, { method:'DELETE', headers: headers() });
         if (!res.ok) { alert('Ошибка удаления'); return; }
         location.reload();
       });
@@ -223,6 +307,7 @@
             <option value="textarea">Текст (абзац)</option>
             <option value="radio">Один из списка</option>
             <option value="checkbox">Несколько из списка</option>
+            <option value="range_slider">Слайдер диапазона</option>
           </select>
         </div>
         <div class="col-md-3 form-check">
@@ -264,13 +349,17 @@
       end_at: document.querySelector('#end_at').value || null,
     };
     const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
-    if (!res.ok) alert('Ошибка сохранения');
+    if (!res.ok) {
+      alert('Ошибка сохранения');
+      return;
+    }
+    alert('Ревью успешно сохранено!');
   });
 
   // Review delete
   document.querySelector('#btn-delete-review').addEventListener('click', async () => {
     if (!confirm('Удалить весь опрос и все связанные анкеты/ответы? Действие необратимо.')) return;
-    const res = await fetch(`/api/reviews/${reviewId}/questions/${id}?t=${token}`, {
+    const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, {
       method:'DELETE', headers: headers()
     });
     if (!res.ok) { alert('Ошибка удаления'); return; }
@@ -290,7 +379,11 @@
     const items = collectNewItems();
     if (!items.length) return;
     const res = await fetch(`/api/reviews/${reviewId}/questions?t=${token}`, { method:'POST', headers: headers(), body: JSON.stringify(items) });
-    if (!res.ok) { alert('Ошибка создания'); return; }
+    if (!res.ok) { 
+      alert('Ошибка создания'); 
+      return; 
+    }
+    alert('Вопросы добавлены в форму!');
     location.reload();
   });
 </script>

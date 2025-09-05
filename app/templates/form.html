@@ -31,8 +31,8 @@
           </div>
         {% endfor %}
 
-      {% elif q.question_type == 'scale' or q.question_type == 'rating' %}
-        <input type="range" class="form-range" name="{{ q.question_id }}" min="{{ q.meta.min or 1 }}" max="{{ q.meta.max or 10 }}" step="1">
+      {% elif q.question_type == 'scale' or q.question_type == 'rating' or q.question_type == 'range_slider' %}
+        <input type="range" class="form-range" name="{{ q.question_id }}" min="{{ q.meta.min or 1 }}" max="{{ q.meta.max or 10 }}" step="1" {% if q.is_required %}required{% endif %}>
         <div class="scale-value mono mt-1 small"></div>
 
       {% endif %}
