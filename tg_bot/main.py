@@ -41,7 +41,6 @@ dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-
 # Сохранение рассылки в БД
 def save_broadcast(message_text: str, scheduled_time: datetime) -> Optional[int]:
     try:
@@ -91,25 +90,12 @@ def update_broadcast_status(broadcast_id: int, status: str,
 # Создание основной клавиатуры
 def create_main_keyboard():
     builder = ReplyKeyboardBuilder()
-    
-    # Кнопка для админа
     builder.row(KeyboardButton(text="📝 Создать форму"))
     builder.row(KeyboardButton(text="📝 Посмотреть список созданных форм"))
     builder.row(KeyboardButton(text="⬅️ Главное меню"))
     return builder.as_markup(resize_keyboard=True)
 
-# Создание клавиатуры админа
-def create_admin_keyboard():
-    builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="📝 Создать форму"))
-    builder.row(KeyboardButton(text="⬅️ Главное меню"))
-    return builder.as_markup(resize_keyboard=True)
-
-ADMIN_IDS = [879714387]  # Ваш Telegram ID
-
-# Проверка прав администратора
-def is_admin(user_id: int) -> bool:
-    return user_id in ADMIN_IDS
+# ADMIN_IDS = [879714387]  # Ваш Telegram ID
 
 # Состояния для FSM
 user_states = {}
@@ -118,38 +104,45 @@ user_states = {}
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
     cur_user = message.from_user
+    user_states[message.from_user.id] = 'waiting_for_name'
+    await message.answer('Введите ваше имя (в формате ФИО): ')
 
-    async with httpx.AsyncClient() as client:
-        users = await client.get(url="http://localhost:8000/api/users")
-        is_registered = False
-        for user in users.json():
-            if user['telegram_chat_id'] == str(cur_user.id):
-                is_registered = True
-                db_id = user['user_id']
-                break
-        if not is_registered:
-            data = {
-                "first_name": cur_user.first_name,
-                "last_name": cur_user.last_name or "string",
-                "telegram_chat_id": str(cur_user.id),
-                "can_create_review": True
-            }
-            headers = {
-                "Content-type": "application/json", 
-            }
-            response = await client.post(url=f"http://localhost:8000/api/users", 
-                                         data=json.dumps(data), headers=headers)
-            db_id = response.json()['user_id']
-        welcome_text = f"👋 Привет, {cur_user.first_name}!\n✅ Вы успешно зарегистрированы!"
+    # async with httpx.AsyncClient() as client:
+    #     users = await client.get(url="http://localhost:8000/api/users")
+    #     is_registered = False
+    #     for user in users.json():
+    #         if user['telegram_chat_id'] == str(cur_user.id):
+    #             is_registered = True
+    #             db_id = user['user_id']
+    #             break
+    #     if not is_registered:
+    #         data = {
+    #             "first_name": cur_user.first_name,
+    #             "last_name": cur_user.last_name or "string",
+    #             "telegram_chat_id": str(cur_user.id),
+    #             "can_create_review": True
+    #         }
+    #         headers = {
+    #             "Content-type": "application/json", 
+    #         }
+    #         response = await client.post(url=f"http://localhost:8000/api/users", 
+    #                                      data=json.dumps(data), headers=headers)
+    #         db_id = response.json()['user_id']
+    #     welcome_text = f"👋 Привет, {cur_user.first_name}!\n✅ Вы успешно зарегистрированы!"
 
-    keyboard = create_main_keyboard()
-    await message.answer(welcome_text, reply_markup=keyboard)
+    # keyboard = create_main_keyboard()
+    # await message.answer(welcome_text, reply_markup=keyboard)
     
-    user_states[str(message.from_user.id)+'_db_id'] = db_id
+    # user_states[str(message.from_user.id)+'_db_id'] = db_id
     
-    if is_admin(cur_user.id):
-        admin_keyboard = create_admin_keyboard()
-        await message.answer("👑 Вам доступна панель администратора", reply_markup=admin_keyboard)
+    # if is_admin(user_states[str(message.from_user.id)+'_db_id']):
+    #     await message.answer("👑 Вам доступна панель администратора", reply_markup=keyboard)
+
+# Проверка прав администратора
+def is_admin(user_id: int) -> bool:
+    with httpx.Client() as client:
+        is_admin = client.post(url=f"http://localhost:8000/api/users/{user_id}/is_admin")
+    return is_admin
 
 @router.message(F.text == "📝 Создать форму")
 async def create_form(message: types.Message):
@@ -173,7 +166,6 @@ async def list_forms(message: types.Message):
         return
     
     try: 
-        
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 url=f"http://localhost:8000/api/users/{user_states[str(message.from_user.id)+'_db_id']}/reviews"
@@ -190,7 +182,7 @@ async def list_forms(message: types.Message):
             response_text += f"ID: {form['id']}\n"
             response_text += f"Тег пользователя: {form['subject_user_id']}\n"
             response_text += f"Создано: {form['created_at']}\n"
-            
+        
         await message.answer(response_text)
         
     except Exception as e:
@@ -222,7 +214,7 @@ async def show_active_broadcasts(message: types.Message):
     broadcasts = get_scheduled_broadcasts()
     
     if not broadcasts:
-        await message.answer("📭 Нет активных рассылок")
+        await message.answer("📭 Нет активных рассылок", reply_markup=create_main_keyboard())
         return
     
     response = "📋 Активные рассылки:\n\n"
@@ -234,11 +226,12 @@ async def show_active_broadcasts(message: types.Message):
         response += f"Текст: {preview}\n"
         response += "─" * 20 + "\n"
     
-    await message.answer(response)
+    await message.answer(response, reply_markup=create_main_keyboard())
 
 # Обработчик текстовых сообщений для создания рассылки
 @router.message(F.text)
-async def handle_broadcast_creation(message: types.Message):
+async def handle_text_response(message: types.Message):
+    cur_user = message.from_user
     user_id = message.from_user.id
     
     if user_id in user_states and user_states[user_id] == 'awaiting_broadcast_message':
@@ -323,6 +316,46 @@ async def handle_broadcast_creation(message: types.Message):
             await message.answer("❌ Ошибка при создании формы")
             if user_id in user_states:
                 del user_states[user_id]
+                
+    elif user_id in user_states and user_states[user_id] == 'waiting_for_name':
+        
+        last_name, first_name, middle_name = message.text.strip().split()
+        
+        async with httpx.AsyncClient() as client:
+            users = await client.get(url="http://localhost:8000/api/users")
+            is_registered = False
+            for user in users.json():
+                if user['telegram_chat_id'] == str(cur_user.id):
+                    is_registered = True
+                    db_id = user['user_id']
+                    break
+            if not is_registered:
+                data = {
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "middle_name": middle_name,
+                    "telegram_chat_id": str(cur_user.id),
+                    "can_create_review": True
+                }
+                headers = {
+                    "Content-type": "application/json", 
+                }
+                response = await client.post(url=f"http://localhost:8000/api/users", 
+                                            data=json.dumps(data), headers=headers)
+                db_id = response.json()['user_id']
+
+        welcome_text = f"👋 Привет, {cur_user.first_name}!\n✅ Вы успешно зарегистрированы!"
+
+        keyboard = create_main_keyboard()
+        
+        user_states[str(message.from_user.id)+'_db_id'] = db_id
+        
+        if is_admin(user_states[str(message.from_user.id)+'_db_id']):
+            await message.answer("👑 Вам доступна панель администратора", reply_markup=keyboard)
+        else:
+            await message.answer(welcome_text, reply_markup=keyboard)
+            
+        del user_states[user_id]
 
 # Функция для отправки рассылки
 async def send_broadcast(broadcast_id: int, message_text: str):
@@ -353,9 +386,9 @@ async def send_broadcast(broadcast_id: int, message_text: str):
             f"📝 Текст: {message_text[:100]}..."
         )
         
-        for admin_id in ADMIN_IDS:
+        for user_id in users:
             try:
-                await bot.send_message(admin_id, report)
+                await bot.send_message(user_id, report)
             except:
                 pass
                 
