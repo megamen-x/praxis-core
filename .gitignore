@@ -59,6 +59,8 @@ tg_venv/
 users.db*
 app.db*
 
+.env
+
 # Django stuff:
 *.log
 local_settings.py

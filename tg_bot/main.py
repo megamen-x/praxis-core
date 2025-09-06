@@ -41,65 +41,6 @@ dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-# # Создание асинхронного движка
-async_session = LocalSession()
-
-# Инициализация базы данных
-async def init_db():
-    with LocalSession() as session:
-        Base.metadata.create_all(bind=session.get_bind())
-
-# Регистрация пользователя в БД
-def register_user(user_id: int, username: str, first_name: str, last_name: str) -> bool:
-    try:
-        with LocalSession() as session:
-            # Проверяем, существует ли пользователь
-            existing_user = session.query(User).filter(User.user_id == user_id).one_or_none()
-            
-            if not existing_user:
-                new_user = User(
-                    user_id=user_id,
-                    first_name=first_name,
-                    last_name=last_name,
-                    can_create_review=True,
-                    created_at=datetime.utcnow(),
-                )
-                session.add(new_user)
-                session.commit()
-            return True
-            
-    except Exception as e:
-        logger.error(f"Error registering user: {e}")
-        return False
-
-# Получение всех активных пользователей
-def get_all_users() -> List[int]:
-    try:
-        with LocalSession() as session:
-            users = session.query(User.user_id).filter(User.is_active).all()
-            return [user[0] for user in users]
-    except Exception as e:
-        logger.error(f"Error getting users: {e}")
-        return []
-
-# Получение количества пользователей
-def get_reviews_by_user(user_id: str) -> int:
-    try:
-        with LocalSession() as session:
-            reviews = session.query(Review).filter(Review.created_by_user_id == user_id).all()
-            return len(reviews)
-    except Exception as e:
-        logger.error(f"Error getting users count: {e}")
-        return 0
-
-def get_users_count() -> int:
-    try:
-        with LocalSession() as session:
-            users = session.query(User).all()
-            return len(users)
-    except Exception as e:
-        logger.error(f"Error getting users count: {e}")
-        return 0
 
 # Сохранение рассылки в БД
 def save_broadcast(message_text: str, scheduled_time: datetime) -> Optional[int]:
@@ -170,32 +111,45 @@ ADMIN_IDS = [879714387]  # Ваш Telegram ID
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
+# Состояния для FSM
+user_states = {}
+
 # Обработчик команды /start
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
-    user = message.from_user
-    success = register_user(
-        user_id=user.id,
-        username=user.username,
-        first_name=user.first_name,
-        last_name=user.last_name or ""
-    )
-    
-    if success:
-        welcome_text = f"👋 Привет, {user.first_name}!\n✅ Вы успешно зарегистрированы!"
-    else:
-        welcome_text = f"👋 Привет, {user.first_name}!\nПроизошла ошибка при регистрации."
-    
+    cur_user = message.from_user
+
+    async with httpx.AsyncClient() as client:
+        users = await client.get(url="http://localhost:8000/api/users")
+        is_registered = False
+        for user in users.json():
+            if user['telegram_chat_id'] == str(cur_user.id):
+                is_registered = True
+                db_id = user['user_id']
+                break
+        if not is_registered:
+            data = {
+                "first_name": cur_user.first_name,
+                "last_name": cur_user.last_name or "string",
+                "telegram_chat_id": str(cur_user.id),
+                "can_create_review": True
+            }
+            headers = {
+                "Content-type": "application/json", 
+            }
+            response = await client.post(url=f"http://localhost:8000/api/users", 
+                                         data=json.dumps(data), headers=headers)
+            db_id = response.json()['user_id']
+        welcome_text = f"👋 Привет, {cur_user.first_name}!\n✅ Вы успешно зарегистрированы!"
+
     keyboard = create_main_keyboard()
     await message.answer(welcome_text, reply_markup=keyboard)
     
-    # Если пользователь админ - показываем админ-панель
-    if is_admin(user.id):
+    user_states[str(message.from_user.id)+'_db_id'] = db_id
+    
+    if is_admin(cur_user.id):
         admin_keyboard = create_admin_keyboard()
         await message.answer("👑 Вам доступна панель администратора", reply_markup=admin_keyboard)
-
-# Состояния для FSM
-user_states = {}
 
 @router.message(F.text == "📝 Создать форму")
 async def create_form(message: types.Message):
@@ -220,8 +174,13 @@ async def list_forms(message: types.Message):
     
     try: 
         
-        forms = get_reviews_by_user(user_id='ae15f59e-f572-4d28-9ad5-640014288f7b')
-        print(forms)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url=f"http://localhost:8000/api/users/{user_states[str(message.from_user.id)+'_db_id']}/reviews"
+            )
+            forms = response.json()
+            print(forms)
+        
         if not forms:
             await message.answer("📭 Нет созданных форм")
             return
@@ -229,7 +188,7 @@ async def list_forms(message: types.Message):
         response_text = "📋 Список созданных форм:\n\n"
         for form in forms:
             response_text += f"ID: {form['id']}\n"
-            # response_text += f"Тег пользователя: {form['subject_user_id']}\n"
+            response_text += f"Тег пользователя: {form['subject_user_id']}\n"
             response_text += f"Создано: {form['created_at']}\n"
             
         await message.answer(response_text)
@@ -313,7 +272,6 @@ async def handle_broadcast_creation(message: types.Message):
                     f"✅ Рассылка запланирована!\n"
                     f"ID: {broadcast_id}\n"
                     f"Время: {scheduled_time.strftime('%Y-%m-%d %H:%M')}\n"
-                    f"Получателей: {len(get_all_users())}"
                 )
             else:
                 await message.answer("❌ Ошибка при сохранении рассылки")
@@ -334,8 +292,8 @@ async def handle_broadcast_creation(message: types.Message):
             
             async with httpx.AsyncClient() as client:
                 data = {
-                    "created_by_user_id": "ae15f59e-f572-4d28-9ad5-640014288f7b", 
-                    "subject_user_id": "43e86fc0-ac1f-4b1f-9025-6bb43da68f3e", 
+                    "created_by_user_id": user_states[str(message.from_user.id)+'_db_id'], 
+                    "subject_user_id": message.text.strip(), 
                     "title": "Gospody",
                     "description": "New",
                     "anonymity": False,
@@ -365,13 +323,13 @@ async def handle_broadcast_creation(message: types.Message):
             await message.answer("❌ Ошибка при создании формы")
             if user_id in user_states:
                 del user_states[user_id]
-        
-            
 
 # Функция для отправки рассылки
 async def send_broadcast(broadcast_id: int, message_text: str):
     try:
-        users = get_all_users()
+        async with httpx.AsyncClient() as client:
+            users = await client.get(url="http://localhost:8000/api/users")
+            users = [int(user['telegram_chat_id']) for user in users.json()]
         success_count = 0
         fail_count = 0
         
@@ -451,10 +409,10 @@ async def cmd_cancel(message: types.Message):
 # Основная функция
 async def main():
     # Инициализируем БД
-    await init_db()
+    # await init_db()
     
     # Загружаем запланированные рассылки
-    await load_scheduled_broadcasts()
+    # await load_scheduled_broadcasts()
     
     logger.info("Бот запущен!")
     
@@ -463,7 +421,7 @@ async def main():
 
 # Обработка graceful shutdown
 async def shutdown():
-    await engine.dispose()
+    # await engine.dispose()
     logger.info("Бот остановлен")
 
 if __name__ == "__main__":
