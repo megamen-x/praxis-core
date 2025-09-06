@@ -9,7 +9,7 @@ from sqlalchemy import select, update, delete
 from db.session import get_db
 from app.core.security import verify_csrf, issue_csrf
 from db.models import Review, Question, QuestionType, QuestionOption, ReviewQuestionLink
-from app.schemas.review import UpdateReviewIn
+from app.schemas.review import UpdateReviewIn, ReviewOut
 from app.schemas.question import QuestionCreate, QuestionUpdate, ReviewQuestionLinkUpdate
 from app.services.links import verify_token
 

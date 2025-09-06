@@ -41,33 +41,42 @@
 <div id="questions">
   {% for q in questions %}
   <div class="q-block" data-id="{{ q.question_id }}" data-meta='{{ {"options": q.options}|tojson }}'>
-    <div class="mb-2 question_label">Вопрос №{{ q.position+1 }}</div>
-    <input  class="form-control brutal-input mb-2 q-text" value="{{ q.question_text }}" rows="3">
-    <div class="row g-2 align-items-center">
-      <div class="col-md-4">
-        <select class="form-select brutal-input q-type">
-          <option value="text" {% if q.question_type=='text' %}selected{% endif %}>Текст (строка)</option>
-          <option value="textarea" {% if q.question_type=='textarea' %}selected{% endif %}>Текст (абзац)</option>
-          <option value="radio" {% if q.question_type=='radio' %}selected{% endif %}>Один из списка</option>
-          <option value="checkbox" {% if q.question_type=='checkbox' %}selected{% endif %}>Несколько из списка</option>
-          <option value="range_slider" {% if q.question_type=='range_slider' %}selected{% endif %}>Слайдер диапазона</option>
-        </select>
-      </div>
-      <div class="col-md-3 form-check-colmn">
-        <div class="form-check">
-          <input class="form-check-input q-req" type="checkbox" {% if q.is_required %}checked{% endif %}> 
-          <label class="form-check-label">Обязательный</label> 
+    <div class="mb-2 question_label">Вопрос №{{ q.position }}</div>
+    <div class="container">
+      <label class="form-label ">Текст вопроса</label>
+      <input  class="form-control brutal-input mb-2 q-text" value="{{ q.question_text }}" rows="3">
+      <div class="row g-2 align-items-center">
+        <label class="form-label">Параметры вопроса</label>
+        <div style="display:flex; flex-direction: row; justify-content: center; align-items: center" class="row g-2">
+          <div class="col-md-3"> 
+              <label class="form-label-sec mono">Номер вопроса</label>
+              <input class="form-control brutal-input q-pos" type="number" value="{{ q.position }}" min="1">
+            </div>
+          <div class="col-md-3">
+            <label class="form-label-sec mono">Формат ответа</label>
+            <select class="form-select brutal-input q-type">
+              <option value="text" {% if q.question_type=='text' %}selected{% endif %}>Текст (строка)</option>
+              <option value="textarea" {% if q.question_type=='textarea' %}selected{% endif %}>Текст (абзац)</option>
+              <option value="radio" {% if q.question_type=='radio' %}selected{% endif %}>Один из списка</option>
+              <option value="checkbox" {% if q.question_type=='checkbox' %}selected{% endif %}>Несколько из списка</option>
+              <option value="range_slider" {% if q.question_type=='range_slider' %}selected{% endif %}>Слайдер диапазона</option>
+            </select>
+          </div>
+          <div class="col-md-3 form-check-colmn">
+            <label class="form-label-sec mono">Будет ли вопрос обязательным?</label>
+            <div class="form-check">
+              <input class="form-check-input q-req" type="checkbox" {% if q.is_required %}checked{% endif %}> 
+              <label class="form-check-label">Обязательный</label> 
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="col-md-1">
-        <input class="form-control brutal-input q-pos" type="number" value="{{ q.position }}">
       </div>
     </div>
     <!-- ui answers -->
     <div class="answers-ui mt-2"></div>
     <div class="mt-2">
-      <button class="btn btn-sm btn-brutal btn-update">Обновить</button>
-      <button class="btn btn-sm btn-danger btn-del">Удалить</button>
+      <button class="btn btn-brutal btn-update">Обновить</button>
+      <button class="btn btn-danger btn-del">Удалить</button>
     </div>
   </div>
   {% endfor %}
@@ -100,26 +109,37 @@
     clear(ui);
 
     if (type === 'text') {
+      const label = document.createElement('label');
+      label.className = 'form-label-sec'
+      label.innerHTML = 'Заполняется сотрудником'
       const input = document.createElement('input');
       input.className = 'form-control brutal-input';
       input.type = 'text';
       input.placeholder = 'Пример ответа';
       input.disabled = true;
+      ui.appendChild(label);
       ui.appendChild(input);
       return;
     }
 
     if (type === 'textarea') {
+      const label = document.createElement('label');
+      label.className = 'form-label-sec'
+      label.innerHTML = 'Заполняется сотрудником'
       const ta = document.createElement('textarea');
       ta.className = 'form-control brutal-input';
       ta.rows = 3;
       ta.placeholder = 'Пример ответа';
       ta.disabled = true;
+      ui.appendChild(label);
       ui.appendChild(ta);
       return;
     }
 
     if (type === 'range_slider') {
+      const label = document.createElement('label');
+      label.className = 'form-label-sec'
+      label.innerHTML = 'Диапазон значений'
       const container = document.createElement('div');
       container.className = 'range-slider-container';
       
@@ -135,7 +155,7 @@
       
       // Создаем отображение значения
       const valueDisplay = document.createElement('div');
-      valueDisplay.className = 'range-value mono mt-1 small';
+      valueDisplay.className = 'range-value mono mt-1 medium';
       valueDisplay.textContent = slider.value;
       
       // Создаем поля для настройки min/max
@@ -143,13 +163,13 @@
       settingsRow.className = 'row g-2 mt-2';
       
       const minCol = document.createElement('div');
-      minCol.className = 'col-6';
+      minCol.className = 'col-2';
       const minLabel = document.createElement('label');
-      minLabel.className = 'form-label small';
+      minLabel.className = 'form-label-sec mono';
       minLabel.textContent = 'Минимум:';
       const minInput = document.createElement('input');
       minInput.type = 'number';
-      minInput.className = 'form-control form-control-sm';
+      minInput.className = 'form-control form-control-md';
       minInput.value = meta.min || 1;
       minInput.addEventListener('change', () => {
         slider.min = minInput.value;
@@ -161,13 +181,13 @@
       minCol.append(minLabel, minInput);
       
       const maxCol = document.createElement('div');
-      maxCol.className = 'col-6';
+      maxCol.className = 'col-2';
       const maxLabel = document.createElement('label');
-      maxLabel.className = 'form-label small';
+      maxLabel.className = 'form-label-sec mono';
       maxLabel.textContent = 'Максимум:';
       const maxInput = document.createElement('input');
       maxInput.type = 'number';
-      maxInput.className = 'form-control form-control-sm';
+      maxInput.className = 'form-control form-control-md';
       maxInput.value = meta.max || 10;
       maxInput.addEventListener('change', () => {
         slider.max = maxInput.value;
@@ -186,6 +206,7 @@
       });
       
       container.append(slider, valueDisplay, settingsRow);
+      ui.appendChild(label);
       ui.appendChild(container);
       return;
     }
@@ -200,7 +221,7 @@
       const txt = document.createElement('input');
       txt.type = 'text';
       txt.className = 'form-control brutal-input ans-'+kind+'-label';
-      txt.placeholder = 'Вариант ответа';
+      txt.placeholder = 'Пример ответа';
       txt.value = labelText || '';
       const del = document.createElement('button');
       del.type = 'button';
@@ -214,6 +235,10 @@
     if (type === 'radio' || type === 'checkbox') {
       const list = document.createElement('div');
       list.className = 'ans-'+type+'-list';
+      const label = document.createElement('label');
+      label.className = 'form-label-sec'
+      label.style = 'margin-bottom: 7px;'
+      label.innerHTML = 'Варианты ответов'
       // prefill options
       if (meta && Array.isArray(meta.options) && meta.options.length) {
         meta.options.forEach(o => list.appendChild(addOptionRow(type, o.label ?? o.value ?? o.option_text ?? '')));
@@ -222,10 +247,10 @@
       }
       const addBtn = document.createElement('button');
       addBtn.type = 'button';
-      addBtn.className = 'btn btn-sm btn-secondary mt-1 ans-add-row';
+      addBtn.className = 'btn btn-md btn-secondary mt-1 ans-add-row';
       addBtn.textContent = '+ Добавить вариант';
       addBtn.addEventListener('click', () => list.appendChild(addOptionRow(type, '')));
-      ui.append(list, addBtn);
+      ui.append(label, list, addBtn);
       return;
     }
   }
@@ -255,6 +280,51 @@
     return null;
   }
 
+  // question position validation functions
+  function getUsedPositions(excludeElement = null) {
+    const positions = new Set();
+    document.querySelectorAll('#questions .q-block .q-pos').forEach(input => {
+        if (input !== excludeElement) {
+            const value = parseInt(input.value);
+            if (!isNaN(value) && value > 0) {
+                positions.add(value);
+            }
+        }
+    });
+    document.querySelectorAll('#new-questions .q-block .q-pos').forEach(input => {
+        if (input !== excludeElement) {
+            const value = parseInt(input.value);
+            if (!isNaN(value) && value > 0) {
+                positions.add(value);
+            }
+        }
+    });
+    return positions;
+  }
+
+  function validatePosition(input) {
+    const value = parseInt(input.value);
+    const usedPositions = getUsedPositions(input);
+    if (isNaN(value) || value <= 0) {
+        alert('Позиция должна быть числом больше 0');
+        return false;
+    }
+    if (usedPositions.has(value)) {
+        alert('Эта позиция уже используется другим вопросом');
+        return false;
+    }
+    return true;
+  }
+
+  function getNextAvailablePosition(excludeElement = null) {
+    const usedPositions = getUsedPositions(excludeElement);
+    let nextPosition = 1;
+    while (usedPositions.has(nextPosition)) {
+        nextPosition++;
+    }
+    return nextPosition;
+  }
+
   function setupExistingBlocks() {
     document.querySelectorAll('#questions .q-block').forEach(block => {
       const typeSel = block.querySelector('.q-type');
@@ -262,9 +332,13 @@
       try { meta = JSON.parse(block.getAttribute('data-meta') || '{}'); } catch(e){}
       renderAnswers(block, typeSel.value, meta);
       typeSel.addEventListener('change', () => renderAnswers(block, typeSel.value, {}));
-
+      const posInput = block.querySelector('.q-pos');
+        posInput.addEventListener('change', () => {
+            validatePosition(posInput);
+        });
       // bind update
       block.querySelector('.btn-update').addEventListener('click', async () => {
+        if (!validatePosition(posInput)) return;
         const id = block.dataset.id;
         const typeSel = block.querySelector('.q-type');
         const opts = collectOptions(block);
@@ -299,29 +373,54 @@
     const el = document.createElement('div');
     el.className = 'q-block';
     el.innerHTML = `
-      <input class="form-control brutal-input mb-2 q-text" placeholder="Текст вопроса">
-      <div class="row g-2 align-items-center">
-        <div class="col-md-4">
-          <select class="form-select brutal-input q-type">
-            <option value="text">Текст (строка)</option>
-            <option value="textarea">Текст (абзац)</option>
-            <option value="radio">Один из списка</option>
-            <option value="checkbox">Несколько из списка</option>
-            <option value="range_slider">Слайдер диапазона</option>
-          </select>
-        </div>
-        <div class="col-md-3 form-check">
-          <input class="form-check-input q-req" type="checkbox"> <label class="form-check-label">Обязательный</label>
-        </div>
-        <div class="col-md-2">
-          <input class="form-control brutal-input q-pos" type="number" value="0">
+      <div class="col-12">
+        <label class="form-label mono">Новый вопрос</label>
+        <input class="form-control brutal-input mb-2 q-text" placeholder="Текст вопроса">
+      </div>
+      <div class="row g-2 align-content-center">
+        <label class="form-label mono">Параметры вопроса</label>
+        <div style="display:flex; flex-direction: row; justify-content: center; align-items: center" class="row g-2">
+          <div class="col-md-3"> 
+            <label class="form-label-sec mono">Номер вопроса</label>
+            <input class="form-control brutal-input q-pos" type="number" value="${getNextAvailablePosition()}" min="1">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label-sec mono">Формат ответа</label>
+            <select class="form-select brutal-input q-type">
+              <option value="text">Текст (строка)</option>
+              <option value="textarea">Текст (абзац)</option>
+              <option value="radio">Один из списка</option>
+              <option value="checkbox">Несколько из списка</option>
+              <option value="range_slider">Слайдер</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label-sec mono">Будет ли вопрос обязательным?</label>
+            <div class="form-check">
+              <input class="form-check-input q-req" type="checkbox">
+              <label class="form-check-label">Обязательный</label>
+             </div>
+          </div>
         </div>
       </div>
+      <label class="form-label mono">Поле ответа</label>
       <div class="answers-ui mt-2"></div>
     `;
-    const typeSel = el.querySelector('.q-type');
-    renderAnswers(el, typeSel.value, {});
-    typeSel.addEventListener('change', () => renderAnswers(el, typeSel.value, {}));
+    // const typeSel = el.querySelector('.q-type');
+    // renderAnswers(el, typeSel.value, {});
+    // typeSel.addEventListener('change', () => renderAnswers(el, typeSel.value, {}));
+    
+    // const posInput = el.querySelector('.q-pos');
+    // posInput.addEventListener('change', () => {
+    //     if (!validatePosition(posInput)) {
+    //         posInput.value = getNextAvailablePosition(posInput);
+    //     }
+    // });
+    
+    // el.querySelector('.btn-remove-new').addEventListener('click', () => {
+    //     el.remove();
+    // });
+    
     return el;
   }
 
@@ -339,7 +438,6 @@
     });
   }
 
-  // Review save
   document.querySelector('#btn-save-review').addEventListener('click', async () => {
     const payload = {
       title: document.querySelector('#title').value,
@@ -356,7 +454,6 @@
     alert('Ревью успешно сохранено!');
   });
 
-  // Review delete
   document.querySelector('#btn-delete-review').addEventListener('click', async () => {
     if (!confirm('Удалить весь опрос и все связанные анкеты/ответы? Действие необратимо.')) return;
     const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, {
@@ -366,17 +463,49 @@
     window.location.href = '/';
   });
 
-  // Existing questions init
   setupExistingBlocks();
 
-  // New questions
   const newWrap = document.querySelector('#new-questions');
   document.querySelector('#btn-add-q').addEventListener('click', () => {
-    newWrap.appendChild(createNewBlock());
+    const newBlock = createNewBlock();
+    newWrap.appendChild(newBlock);
+    
+    const typeSel = newBlock.querySelector('.q-type');
+    if (typeSel) {
+        renderAnswers(newBlock, typeSel.value, {});
+        typeSel.addEventListener('change', () => renderAnswers(newBlock, typeSel.value, {}));
+    }
+    
+    const posInput = newBlock.querySelector('.q-pos');
+    if (posInput) {
+        posInput.addEventListener('change', () => {
+            if (!validatePosition(posInput)) {
+                posInput.value = getNextAvailablePosition(posInput);
+            }
+        });
+    }
+    
+    const removeBtn = newBlock.querySelector('.btn-remove-new');
+    if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+            newBlock.remove();
+        });
+    }
   });
 
   document.querySelector('#btn-create').addEventListener('click', async () => {
-    const items = collectNewItems();
+
+    let valid = true;
+      document.querySelectorAll('#new-questions .q-block .q-pos').forEach(input => {
+          if (!validatePosition(input)) {
+              valid = false;
+          }
+    });
+    
+    if (!valid) {
+        alert('Исправьте ошибки в позициях вопросов перед сохранением');
+        return;
+    }    const items = collectNewItems();
     if (!items.length) return;
     const res = await fetch(`/api/reviews/${reviewId}/questions?t=${token}`, { method:'POST', headers: headers(), body: JSON.stringify(items) });
     if (!res.ok) { 
