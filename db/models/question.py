@@ -4,14 +4,12 @@ from db import Base
 import enum
 import uuid
 
-
 class QuestionType(str, enum.Enum):
     radio = "radio"
     checkbox = "checkbox"
     text = "text"
     textarea = "textarea"
     range_slider = "range_slider"
-
 
 class QuestionOption(Base):
     __tablename__ = "question_options"
@@ -22,7 +20,7 @@ class QuestionOption(Base):
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     question = relationship("Question", back_populates="options")
-
+    answers = relationship("Answer", secondary="answer_selections", back_populates="selected_options")
 
 class Question(Base):
     __tablename__ = "questions"
@@ -35,7 +33,6 @@ class Question(Base):
     category: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
     meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # add these columns
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False, index=True)
     is_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 

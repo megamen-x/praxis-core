@@ -1,6 +1,7 @@
 # app/routers/surveys.py
 from datetime import datetime, timezone
 import json
+from random import randint
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -11,6 +12,8 @@ from db.models import Survey, Review, Question, Answer, SurveyStatus, QuestionTy
 from app.schemas.answer import SaveAnswersIn
 from app.core.security import issue_csrf, verify_csrf
 from app.services.links import verify_token
+from sqlalchemy import delete as sa_delete, select
+from db.models.answer import AnswerSelection
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -57,12 +60,14 @@ async def form_page(survey_id: str, request: Request, t: str = Query(...), db: S
             "meta": meta,
         })
 
+    random_bg_img = randint(1, 5)
     response = templates.TemplateResponse(
         "form.html",
         {
             "request": request,
             "survey": survey,
             "review": review,
+            "background_image": f'assets/site_bg_{random_bg_img}.png',
             "questions": questions,
             "api_url": f"/api/surveys/{survey_id}/answers?t={t}",
             "done_url": "/thanks",
@@ -97,9 +102,14 @@ async def save_answers(
         raise HTTPException(status_code=404, detail="Review not found")
     # if final and review.end_at and review.end_at < utcnow():
     #     raise HTTPException(status_code=410, detail="Deadline passed")
-
-    # Upsert answers: clear previous for this survey
-    db.query(Answer).filter(Answer.survey_id == survey_id).delete()
+    db.execute(
+        sa_delete(AnswerSelection).where(
+            AnswerSelection.answer_id.in_(
+                select(Answer.answer_id).where(Answer.survey_id == survey_id)
+            )
+        )
+    )
+    db.execute(sa_delete(Answer).where(Answer.survey_id == survey_id))
     db.flush()
 
     for answer_data in payload.answers:
