@@ -1,4 +1,3 @@
-<!-- app/templates/admin_edit.html -->
 {% extends "base.html" %}
 {% block content %}
 <h1 class="mb-3 mono">Редактирование опроса</h1>
@@ -40,7 +39,7 @@
 <h3 class="mono">Вопросы</h3>
 <div id="questions">
   {% for q in questions %}
-  <div class="q-block" data-id="{{ q.question_id }}" data-meta='{{ {"options": q.options}|tojson }}'>
+  <div class="q-block" data-id="{{ q.question_id }}" data-meta='{{ q.meta|tojson }}'>
     <div class="mb-2 question_label">Вопрос №{{ q.position }}</div>
     <div class="container">
       <label class="form-label ">Текст вопроса</label>
@@ -88,6 +87,22 @@
   <button id="btn-add-q" class="btn btn-secondary">Новый вопрос</button>
   <button id="btn-create" class="btn btn-brutal">Сохранить вопросы</button>
 </div>
+
+<div class="q-block">
+  <h5 class="mono">Добавить из блока</h5>
+  <div class="row g-2">
+    <div class="col-md-6">
+      <select id="block-select" class="form-select brutal-input">
+        <option value="">— выберите блок —</option>
+      </select>
+    </div>
+    <div class="col-md-6 d-flex gap-2">
+      <button id="btn-load-blocks" class="btn btn-secondary" type="button">Обновить список</button>
+      <button id="btn-add-block" class="btn btn-brutal" type="button">Добавить блок</button>
+    </div>
+  </div>
+  <div id="block-info" class="small mt-2 text-muted"></div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -102,7 +117,6 @@
   // Helpers for answers UI
   function clear(el){ while(el.firstChild) el.removeChild(el.firstChild); }
   function ensureInt(v, d){ const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; }
-  function slugify(s){ return (s||"").toString().toLowerCase().trim().replace(/\s+/g,'_').replace(/[^\w\-]+/g,'').slice(0,64) || 'opt'; }
 
   function renderAnswers(block, type, meta={}) {
     const ui = block.querySelector('.answers-ui');
@@ -143,22 +157,19 @@
       const container = document.createElement('div');
       container.className = 'range-slider-container';
       
-      // Создаем слайдер
       const slider = document.createElement('input');
       slider.type = 'range';
       slider.className = 'form-range';
       slider.min = meta.min || 1;
       slider.max = meta.max || 10;
       slider.step = meta.step || 1;
-      slider.value = meta.default || Math.floor((parseInt(slider.min) + parseInt(slider.max)) / 2);
+      slider.value = Math.floor((parseInt(slider.min) + parseInt(slider.max)) / 2);
       slider.disabled = true;
       
-      // Создаем отображение значения
       const valueDisplay = document.createElement('div');
       valueDisplay.className = 'range-value mono mt-1 medium';
       valueDisplay.textContent = slider.value;
       
-      // Создаем поля для настройки min/max
       const settingsRow = document.createElement('div');
       settingsRow.className = 'row g-2 mt-2';
       
@@ -200,7 +211,6 @@
       
       settingsRow.append(minCol, maxCol);
       
-      // Обновляем отображение значения при изменении слайдера
       slider.addEventListener('input', () => {
         valueDisplay.textContent = slider.value;
       });
@@ -239,9 +249,8 @@
       label.className = 'form-label-sec'
       label.style = 'margin-bottom: 7px;'
       label.innerHTML = 'Варианты ответов'
-      // prefill options
       if (meta && Array.isArray(meta.options) && meta.options.length) {
-        meta.options.forEach(o => list.appendChild(addOptionRow(type, o.label ?? o.value ?? o.option_text ?? '')));
+        meta.options.forEach(o => list.appendChild(addOptionRow(type, o.option_text ?? o.label ?? o.value ?? '')));
       } else {
         list.appendChild(addOptionRow(type, ''));
       }
@@ -265,39 +274,30 @@
       return labels.map((text, idx) => ({ option_text: text, position: idx }));
     }
     if (type === 'range_slider') {
-      const container = block.querySelector('.range-slider-container');
-      if (container) {
-        const minInput = container.querySelector('input[type="number"]:first-of-type');
-        const maxInput = container.querySelector('input[type="number"]:last-of-type');
-        return {
-          min: parseInt(minInput?.value || 1),
-          max: parseInt(maxInput?.value || 10),
-          step: 1
-        };
-      }
+      const inputs = block.querySelectorAll('.range-slider-container input[type="number"]');
+      const minInput = inputs?.[0]; const maxInput = inputs?.[1];
+      return {
+        min: parseInt(minInput?.value || 1),
+        max: parseInt(maxInput?.value || 10),
+        step: 1
+      };
     }
-    // для text/textarea — опций нет
     return null;
   }
 
-  // question position validation functions
   function getUsedPositions(excludeElement = null) {
     const positions = new Set();
     document.querySelectorAll('#questions .q-block .q-pos').forEach(input => {
-        if (input !== excludeElement) {
-            const value = parseInt(input.value);
-            if (!isNaN(value) && value > 0) {
-                positions.add(value);
-            }
-        }
+      if (input !== excludeElement) {
+        const value = parseInt(input.value);
+        if (!isNaN(value) && value > 0) positions.add(value);
+      }
     });
     document.querySelectorAll('#new-questions .q-block .q-pos').forEach(input => {
-        if (input !== excludeElement) {
-            const value = parseInt(input.value);
-            if (!isNaN(value) && value > 0) {
-                positions.add(value);
-            }
-        }
+      if (input !== excludeElement) {
+        const value = parseInt(input.value);
+        if (!isNaN(value) && value > 0) positions.add(value);
+      }
     });
     return positions;
   }
@@ -306,12 +306,12 @@
     const value = parseInt(input.value);
     const usedPositions = getUsedPositions(input);
     if (isNaN(value) || value <= 0) {
-        alert('Позиция должна быть числом больше 0');
-        return false;
+      alert('Позиция должна быть числом больше 0');
+      return false;
     }
     if (usedPositions.has(value)) {
-        alert('Эта позиция уже используется другим вопросом');
-        return false;
+      alert('Эта позиция уже используется другим вопросом');
+      return false;
     }
     return true;
   }
@@ -319,9 +319,7 @@
   function getNextAvailablePosition(excludeElement = null) {
     const usedPositions = getUsedPositions(excludeElement);
     let nextPosition = 1;
-    while (usedPositions.has(nextPosition)) {
-        nextPosition++;
-    }
+    while (usedPositions.has(nextPosition)) nextPosition++;
     return nextPosition;
   }
 
@@ -332,20 +330,20 @@
       try { meta = JSON.parse(block.getAttribute('data-meta') || '{}'); } catch(e){}
       renderAnswers(block, typeSel.value, meta);
       typeSel.addEventListener('change', () => renderAnswers(block, typeSel.value, {}));
+
       const posInput = block.querySelector('.q-pos');
-        posInput.addEventListener('change', () => {
-            validatePosition(posInput);
-        });
-      // bind update
+      posInput.addEventListener('change', () => { validatePosition(posInput); });
+
       block.querySelector('.btn-update').addEventListener('click', async () => {
         if (!validatePosition(posInput)) return;
         const id = block.dataset.id;
-        const typeSel = block.querySelector('.q-type');
         const opts = collectOptions(block);
 
         const payload = {
           question_text: block.querySelector('.q-text').value,
-          question_type: typeSel.value
+          question_type: block.querySelector('.q-type').value,
+          is_required: block.querySelector('.q-req').checked,
+          position: parseInt(block.querySelector('.q-pos').value || '0'),
         };
         if (opts !== null) payload.options = opts;
 
@@ -358,7 +356,6 @@
         location.reload();
       });
 
-      // bind delete question
       block.querySelector('.btn-del').addEventListener('click', async () => {
         const id = block.dataset.id;
         if (!confirm('Удалить вопрос?')) return;
@@ -406,21 +403,6 @@
       <label class="form-label mono">Поле ответа</label>
       <div class="answers-ui mt-2"></div>
     `;
-    // const typeSel = el.querySelector('.q-type');
-    // renderAnswers(el, typeSel.value, {});
-    // typeSel.addEventListener('change', () => renderAnswers(el, typeSel.value, {}));
-    
-    // const posInput = el.querySelector('.q-pos');
-    // posInput.addEventListener('change', () => {
-    //     if (!validatePosition(posInput)) {
-    //         posInput.value = getNextAvailablePosition(posInput);
-    //     }
-    // });
-    
-    // el.querySelector('.btn-remove-new').addEventListener('click', () => {
-    //     el.remove();
-    // });
-    
     return el;
   }
 
@@ -433,7 +415,7 @@
         is_required: b.querySelector('.q-req').checked,
         position: parseInt(b.querySelector('.q-pos').value || '0'),
       };
-      if (opts !== null) item.options = opts; // поле не шлём для text/textarea
+      if (opts !== null) item.options = opts;
       return item;
     });
   }
@@ -456,9 +438,7 @@
 
   document.querySelector('#btn-delete-review').addEventListener('click', async () => {
     if (!confirm('Удалить весь опрос и все связанные анкеты/ответы? Действие необратимо.')) return;
-    const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, {
-      method:'DELETE', headers: headers()
-    });
+    const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, { method:'DELETE', headers: headers() });
     if (!res.ok) { alert('Ошибка удаления'); return; }
     window.location.href = '/';
   });
@@ -469,51 +449,71 @@
   document.querySelector('#btn-add-q').addEventListener('click', () => {
     const newBlock = createNewBlock();
     newWrap.appendChild(newBlock);
-    
+
     const typeSel = newBlock.querySelector('.q-type');
-    if (typeSel) {
-        renderAnswers(newBlock, typeSel.value, {});
-        typeSel.addEventListener('change', () => renderAnswers(newBlock, typeSel.value, {}));
-    }
+    renderAnswers(newBlock, typeSel.value, {});
+    typeSel.addEventListener('change', () => renderAnswers(newBlock, typeSel.value, {}));
     
     const posInput = newBlock.querySelector('.q-pos');
-    if (posInput) {
-        posInput.addEventListener('change', () => {
-            if (!validatePosition(posInput)) {
-                posInput.value = getNextAvailablePosition(posInput);
-            }
-        });
-    }
-    
-    const removeBtn = newBlock.querySelector('.btn-remove-new');
-    if (removeBtn) {
-        removeBtn.addEventListener('click', () => {
-            newBlock.remove();
-        });
-    }
+    posInput.addEventListener('change', () => {
+      if (!validatePosition(posInput)) {
+        posInput.value = getNextAvailablePosition(posInput);
+      }
+    });
   });
 
   document.querySelector('#btn-create').addEventListener('click', async () => {
-
     let valid = true;
-      document.querySelectorAll('#new-questions .q-block .q-pos').forEach(input => {
-          if (!validatePosition(input)) {
-              valid = false;
-          }
+    document.querySelectorAll('#new-questions .q-block .q-pos').forEach(input => {
+      if (!validatePosition(input)) valid = false;
     });
-    
     if (!valid) {
-        alert('Исправьте ошибки в позициях вопросов перед сохранением');
-        return;
-    }    const items = collectNewItems();
-    if (!items.length) return;
-    const res = await fetch(`/api/reviews/${reviewId}/questions?t=${token}`, { method:'POST', headers: headers(), body: JSON.stringify(items) });
-    if (!res.ok) { 
-      alert('Ошибка создания'); 
-      return; 
+      alert('Исправьте ошибки в позициях вопросов перед сохранением');
+      return;
     }
+
+    const items = collectNewItems();
+    if (!items.length) return;
+
+    const res = await fetch(`/api/reviews/${reviewId}/questions?t=${token}`, {
+      method:'POST', headers: headers(), body: JSON.stringify(items)
+    });
+    if (!res.ok) { alert('Ошибка создания'); return; }
     alert('Вопросы добавлены в форму!');
     location.reload();
   });
+
+  // Blocks UI
+  const blockSelect = document.getElementById('block-select');
+  const blockInfo = document.getElementById('block-info');
+
+  async function loadBlocks() {
+    blockSelect.innerHTML = '<option value="">— выберите блок —</option>';
+    blockInfo.textContent = '';
+    const res = await fetch(`/api/question-blocks?review_id=${reviewId}&t=${token}`);
+    if (!res.ok) { blockInfo.textContent = 'Не удалось загрузить список блоков'; return; }
+    const blocks = await res.json();
+    blocks.forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.block_id;
+      opt.textContent = `${b.name} ${b.items_count ? '('+b.items_count+')' : ''}${b.is_public ? ' • общий' : ''}`;
+      blockSelect.appendChild(opt);
+    });
+  }
+
+  document.getElementById('btn-load-blocks').addEventListener('click', loadBlocks);
+  document.getElementById('btn-add-block').addEventListener('click', async () => {
+    const blockId = blockSelect.value;
+    if (!blockId) { alert('Сначала выберите блок'); return; }
+    const res = await fetch(`/api/reviews/${reviewId}/blocks/${blockId}?t=${token}`, {
+      method:'POST', headers: headers(), body: JSON.stringify({})
+    });
+    if (!res.ok) { alert('Не удалось добавить блок'); return; }
+    alert('Блок добавлен в форму!');
+    location.reload();
+  });
+
+  // initial blocks load
+  loadBlocks();
 </script>
 {% endblock %}

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from db.models import User, Review, Report, Survey, Question, Answer, QuestionOption, ReviewQuestionLink
+from db.models import User, Review, Report, Survey, Question, Answer, QuestionOption
 
 
 class DatabaseExporter:
@@ -166,19 +166,6 @@ class DatabaseExporter:
                 "position": option.position
             }
             for option in options
-        ]
-    
-    def _export_review_question_links(self) -> List[Dict[str, Any]]:
-        """Экспорт связей ревью-вопрос"""
-        links = self.db.execute(select(ReviewQuestionLink)).scalars().all()
-        return [
-            {
-                "review_id": link.review_id,
-                "question_id": link.question_id,
-                "is_required": link.is_required,
-                "position": link.position
-            }
-            for link in links
         ]
     
     def _export_table_to_csv(self, data: List[Dict[str, Any]]) -> str:

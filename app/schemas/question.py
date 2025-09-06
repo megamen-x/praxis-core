@@ -1,23 +1,30 @@
-# app/schemas/question.py
+from typing import Optional, Union, List
 from pydantic import BaseModel, Field
+from db.models.question import QuestionType
 
-
-class QuestionOptionSchema(BaseModel):
+class QuestionOptionIn(BaseModel):
     option_text: str
-    position: int = 0
+    position: Optional[int] = None
+
+class RangeMeta(BaseModel):
+    min: int = 1
+    max: int = 10
+    step: int = 1
 
 class QuestionCreate(BaseModel):
-    question_text: str = Field(..., min_length=1, description="Текст вопроса не может быть пустым")
-    question_type: str
+    question_text: str
+    question_type: QuestionType | str
     is_required: bool = False
-    position: int = 0
-    options: list[QuestionOptionSchema] | None = None
+    position: int = Field(default=0, ge=0)
+    options: Optional[Union[List[QuestionOptionIn], RangeMeta]] = None
 
 class QuestionUpdate(BaseModel):
-    question_text: str | None = Field(None, min_length=1, description="Текст вопроса не может быть пустым")
-    question_type: str | None = None 
-    options: list[QuestionOptionSchema] | None = None
+    question_text: Optional[str] = None
+    question_type: Optional[QuestionType | str] = None
+    is_required: Optional[bool] = None
+    position: Optional[int] = Field(default=None, ge=1)
+    options: Optional[Union[List[QuestionOptionIn], RangeMeta]] = None
 
-class ReviewQuestionLinkUpdate(BaseModel):
-    is_required: bool | None = None
-    position: int | None = None
+# Dummy body for block-add route (kept for symmetry, can be empty)
+class BlockRefIn(BaseModel):
+    pass

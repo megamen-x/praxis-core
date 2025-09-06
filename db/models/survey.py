@@ -25,7 +25,6 @@ class Survey(Base):
     declined_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_reminder_at: Mapped["DateTime | None"] = mapped_column(DateTime(timezone=True), nullable=True)
     submitted_at: Mapped["DateTime | None"] = mapped_column(DateTime(timezone=True), nullable=True)
-    respondent_key: Mapped[str | None] = mapped_column(String, nullable=False)
 
     review = relationship("Review", back_populates="surveys")
     evaluator = relationship("User")
