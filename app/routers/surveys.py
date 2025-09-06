@@ -1,13 +1,13 @@
 # app/routers/surveys.py
 from datetime import datetime, timezone
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select
 from db.session import get_db
-from db.models import Survey, Review, Question, Answer, SurveyStatus, ReviewQuestionLink, QuestionType, QuestionOption
-from sqlalchemy.orm import joinedload
+from db.models import Survey, Review, Question, Answer, SurveyStatus, QuestionType, QuestionOption
 from app.schemas.answer import SaveAnswersIn
 from app.core.security import issue_csrf, verify_csrf
 from app.services.links import verify_token
@@ -21,7 +21,7 @@ def utcnow() -> datetime:
 
 
 @router.get("/form/{survey_id}", response_class=HTMLResponse)
-def form_page(survey_id: str, request: Request, t: str = Query(...), db: Session = Depends(get_db)):
+async def form_page(survey_id: str, request: Request, t: str = Query(...), db: Session = Depends(get_db)):
     payload = verify_token(t)
     if not payload or payload.get("role") != "respondent" or payload.get("sub") != survey_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
@@ -29,31 +29,32 @@ def form_page(survey_id: str, request: Request, t: str = Query(...), db: Session
     survey = db.get(Survey, survey_id)
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
+
+    # Load review with its questions and question options
     review = db.query(Review).options(
-        joinedload(Review.question_associations).joinedload(ReviewQuestionLink.question).joinedload(Question.options)
+        joinedload(Review.questions).joinedload(Question.options)
     ).filter(Review.review_id == survey.review_id).one()
 
+    # Build questions context for template
     questions = []
-    for assoc in review.question_associations:
-        q = assoc.question
-        if q.question_type in ["radio", "checkbox"]:
-            options = [{"option_id": o.option_id, "option_text": o.option_text, "value": o.value} for o in q.options]
-        elif q.question_type == "range_slider" and q.meta_json:
-            import json
+    for q in review.questions:  # ordered by Question.position in relationship
+        if q.question_type in (QuestionType.radio, QuestionType.checkbox):
+            opts = [{"option_id": o.option_id, "option_text": o.option_text} for o in q.options]
+            meta = {"options": opts}
+        elif q.question_type == QuestionType.range_slider:
             try:
-                meta = json.loads(q.meta_json)
-                options = meta
-            except:
-                options = {"min": 1, "max": 10, "step": 1}
+                meta = json.loads(q.meta_json) if q.meta_json else {"min": 1, "max": 10, "step": 1}
+            except Exception:
+                meta = {"min": 1, "max": 10, "step": 1}
         else:
-            options = []
-        
+            meta = {}
+
         questions.append({
             "question_id": q.question_id,
             "question_text": q.question_text,
             "question_type": q.question_type.value,
-            "is_required": assoc.is_required,
-            "meta": options,
+            "is_required": q.is_required,
+            "meta": meta,
         })
 
     response = templates.TemplateResponse(
@@ -73,7 +74,7 @@ def form_page(survey_id: str, request: Request, t: str = Query(...), db: Session
 
 
 @router.post("/api/surveys/{survey_id}/answers")
-def save_answers(
+async def save_answers(
     survey_id: str,
     payload: SaveAnswersIn,
     request: Request,
@@ -97,33 +98,36 @@ def save_answers(
     # if final and review.end_at and review.end_at < utcnow():
     #     raise HTTPException(status_code=410, detail="Deadline passed")
 
-    # Upsert answers
+    # Upsert answers: clear previous for this survey
     db.query(Answer).filter(Answer.survey_id == survey_id).delete()
     db.flush()
 
     for answer_data in payload.answers:
         question = db.get(Question, answer_data.question_id)
-        if not question:
-            continue # Пропускаем ответ на несуществующий вопрос
+        if not question or question.review_id != review.review_id:
+            # Skip answers to nonexistent or unrelated questions
+            continue
 
-        # Создаем основной объект ответа
-        new_answer = Answer(
-            survey_id=survey_id,
-            question_id=question.question_id,
-        )
+        new_answer = Answer(survey_id=survey_id, question_id=question.question_id)
 
-        if question.question_type in (QuestionType.text, QuestionType.textarea):
-            new_answer.response_text = answer_data.response_text
-        
+        if question.question_type in (QuestionType.text, QuestionType.textarea, QuestionType.range_slider):
+            # Store any free-text or scalar value (including slider value) as text
+            # Expecting the client to send response_text for these types
+            if getattr(answer_data, "response_text", None) is not None:
+                new_answer.response_text = str(answer_data.response_text)
+
         elif question.question_type in (QuestionType.radio, QuestionType.checkbox):
-            if answer_data.selected_option_ids:
-                # Находим объекты опций по ID
+            sel_ids = getattr(answer_data, "selected_option_ids", None) or []
+            if sel_ids:
+                # Only attach options that belong to this question
                 options = db.scalars(
-                    select(QuestionOption).where(QuestionOption.option_id.in_(answer_data.selected_option_ids))
+                    select(QuestionOption).where(
+                        QuestionOption.option_id.in_(sel_ids),
+                        QuestionOption.question_id == question.question_id
+                    )
                 ).all()
-                # SQLAlchemy сама создаст записи в AnswerSelection
                 new_answer.selected_options.extend(options)
-        
+
         db.add(new_answer)
 
     # Update survey status
@@ -137,8 +141,7 @@ def save_answers(
     db.commit()
     return {"ok": True, "final": final}
 
-from fastapi.responses import HTMLResponse
 
 @router.get("/thanks", response_class=HTMLResponse)
-def thanks_page(request: Request):
+async def thanks_page(request: Request):
     return templates.TemplateResponse("thanks.html", {"request": request, "title": "Спасибо"})

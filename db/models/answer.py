@@ -25,5 +25,5 @@ class Answer(Base):
     survey = relationship("Survey", back_populates="answers")
 
     selected_options = relationship("QuestionOption", secondary="answer_selections",
-        backref="answers" # Позволит из QuestionOption узнать, в каких ответах он был выбран
+        backref="answers"
     )
