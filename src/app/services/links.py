@@ -5,7 +5,7 @@ import hashlib
 import base64
 import json
 from typing import Optional
-from app.core.config import settings
+from src.app.core.config import settings
 
 
 def sign_token(payload: dict, ttl_sec: int) -> str:

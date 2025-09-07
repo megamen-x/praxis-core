@@ -4,8 +4,8 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update, and_
-from db.models import Review, Survey, ReviewStatus, SurveyStatus
-from app.services.notification import get_notification_service
+from src.db.models import Review, Survey, ReviewStatus, SurveyStatus
+from src.app.services.notification import get_notification_service
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
-from db.models import Review, User
-from app.core.config import settings
+from src.db.models import Review, User
+from src.app.core.config import settings
 
 logger = logging.getLogger(__name__)
 

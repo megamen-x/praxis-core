@@ -20,11 +20,11 @@ from dotenv import dotenv_values, load_dotenv
 import logging
 import sys
 sys.path.append("..")
-from db import Base
-from db.session import engine, LocalSession
-from db.models.review import Review
-from db.models.user import User
-from db.models.broadcast import Broadcast
+from src.db import Base
+from src.db.session import engine, LocalSession
+from src.db.models.review import Review
+from src.db.models.user import User
+from src.db.models.broadcast import Broadcast
 
 config = dotenv_values("../.env")  
 

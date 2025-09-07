@@ -5,19 +5,19 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update, delete, func
-from db.session import get_db
-from app.core.security import verify_csrf, issue_csrf
-from app.schemas.review import UpdateReviewIn
-from app.schemas.question import QuestionCreate, QuestionUpdate, BlockRefIn
-from app.services.links import verify_token
+from src.db.session import get_db
+from src.app.core.security import verify_csrf, issue_csrf
+from src.app.schemas.review import UpdateReviewIn
+from src.app.schemas.question import QuestionCreate, QuestionUpdate, BlockRefIn
+from src.app.services.links import verify_token
 
 # models
-from db.models.review import Review
-from db.models.question import Question, QuestionType, QuestionOption
-from db.models.question_bank import QuestionBlock
+from src.db.models.review import Review
+from src.db.models.question import Question, QuestionType, QuestionOption
+from src.db.models.question_bank import QuestionBlock
 
 # service to materialize a block
-from app.services.review_blocks import add_block_to_review
+from src.app.services.review_blocks import add_block_to_review
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")

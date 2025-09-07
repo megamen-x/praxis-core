@@ -5,7 +5,7 @@ import base64
 import secrets
 from fastapi import Request, HTTPException, status
 from fastapi.responses import Response
-from app.core.config import settings
+from src.app.core.config import settings
 
 
 def issue_csrf(response: Response, scope: str) -> str:

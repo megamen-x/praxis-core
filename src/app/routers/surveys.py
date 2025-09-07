@@ -7,13 +7,13 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select
-from db.session import get_db
-from db.models import Survey, Review, Question, Answer, SurveyStatus, QuestionType, QuestionOption
-from app.schemas.answer import SaveAnswersIn
-from app.core.security import issue_csrf, verify_csrf
-from app.services.links import verify_token
+from src.db.session import get_db
+from src.db.models import Survey, Review, Question, Answer, SurveyStatus, QuestionType, QuestionOption
+from src.app.schemas.answer import SaveAnswersIn
+from src.app.core.security import issue_csrf, verify_csrf
+from src.app.services.links import verify_token
 from sqlalchemy import delete as sa_delete, select
-from db.models.answer import AnswerSelection
+from src.db.models.answer import AnswerSelection
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")

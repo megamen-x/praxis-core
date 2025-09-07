@@ -4,11 +4,11 @@ import logging
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from app.core.config import settings
-from db.session import engine, get_db
-from db import Base
-from app.routers import admin, surveys, tg, users
-from app.services.notification import check_review_notifications_task
+from src.app.core.config import settings
+from src.db.session import engine, get_db
+from src.db import Base
+from src.app.routers import admin, surveys, tg, users
+from src.app.services.notification import check_review_notifications_task
 
 logger = logging.getLogger(__name__)
 

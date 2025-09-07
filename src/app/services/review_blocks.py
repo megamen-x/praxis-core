@@ -1,8 +1,8 @@
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
-from db.models.review import Review
-from db.models.question import Question, QuestionOption
-from db.models.question_bank import QuestionBlock
+from src.db.models.review import Review
+from src.db.models.question import Question, QuestionOption
+from src.db.models.question_bank import QuestionBlock
 
 def add_block_to_review(session: Session, review_id: str, block_id: str) -> int:
     review = session.get(Review, review_id)

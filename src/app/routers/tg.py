@@ -2,13 +2,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
-from db.session import get_db
-from app.core.security import require_bot_auth
-from app.core.config import settings
-from db.models import User, Review, ReviewStatus, Survey, SurveyStatus
-from app.schemas.review import CreateReviewIn, ReviewOut
-from app.schemas.survey import CreateSurveysIn, SurveyStatusOut
-from app.services.links import sign_token
+from src.db.session import get_db
+from src.app.core.security import require_bot_auth
+from src.app.core.config import settings
+from src.db.models import User, Review, ReviewStatus, Survey, SurveyStatus
+from src.app.schemas.review import CreateReviewIn, ReviewOut
+from src.app.schemas.survey import CreateSurveysIn, SurveyStatusOut
+from src.app.services.links import sign_token
 
 router = APIRouter()
 

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from db.models import User, Review, Report, Survey, Question, Answer, QuestionOption
+from src.db.models import User, Review, Report, Survey, Question, Answer, QuestionOption
 
 
 class DatabaseExporter:
