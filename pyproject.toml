@@ -29,7 +29,8 @@ dependencies = [
     "bleach==6.2.0",
     "apscheduler>=3.11.0",
     "httpx>=0.28.1",
-    "pytest>=8.4.1"
+    "pytest>=8.4.1",
+    "psycopg2-binary"
 ]
 
 [tool.setuptools.packages.find]
