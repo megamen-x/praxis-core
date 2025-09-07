@@ -1,7 +1,0 @@
-aiogram
-aiohttp
-aioschedule
-pytz
-sqlalchemy
-aiosqlite
-alembic

@@ -33,7 +33,6 @@ async def admin_review_page(review_id: str, request: Request, t: str = Query(...
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
-    # review.questions already ordered by Question.position (see relationship)
     qctx = []
     for q in review.questions:
         if q.question_type in (QuestionType.radio, QuestionType.checkbox):

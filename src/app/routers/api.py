@@ -1,20 +1,24 @@
 # app/routers/api.py
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from src.db.models.survey import SurveyStatus
+from src.app.core.config import settings
+from src.app.services.links import sign_token
+from src.db.models.review import ReviewStatus
 from src.db.session import get_db
 from src.db.models import User, Review, Report, Survey
 from src.app.schemas.user import UserOut, UserCreate, UserUpdate
 from src.app.schemas.report import ReportWithReviewOut
-from src.app.schemas.survey import SurveyWithUserOut
-from src.app.schemas.review import ReviewOut
+from src.app.schemas.survey import CreateSurveysIn, SurveyWithUserOut
+from src.app.schemas.review import CreateReviewIn, ReviewOut
 from typing import List
 
 router = APIRouter()
 
 
-@router.get("/api/user/fio", response_model=UserOut)
+@router.post("/api/user/fio", response_model=UserOut)
 async def get_user_by_fio(user_data: UserCreate, db: Session = Depends(get_db)):
     """Получить список всех пользователей"""
     user = db.execute(
@@ -41,17 +45,29 @@ async def get_user(user_id: str, db: Session = Depends(get_db)):
     return user
 
 
+@router.get("/api/user/telegram/{telegram_chat_id}", response_model=UserOut)
+async def get_user_by_telegram(telegram_chat_id: str, db: Session = Depends(get_db)):
+    """Получить пользователя по Telegram chat ID"""
+    user = db.execute(
+        select(User).where(User.telegram_chat_id == telegram_chat_id)
+    ).scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
 @router.post("/api/user", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     """Создать нового пользователя"""
-    if user_data.email:
+    if user_data.telegram_chat_id:
         existing_user = db.execute(
-            select(User).where(User.email == user_data.email)
+            select(User).where(User.telegram_chat_id == user_data.telegram_chat_id)
         ).scalar_one_or_none()
         if existing_user:
             raise HTTPException(
                 status_code=400, 
-                detail="User with this email already exists"
+                detail="User with this telegram_chat_id already exists"
             )
     
     user = User(**user_data.model_dump())
@@ -171,18 +187,18 @@ async def get_user_reports(user_id: str, db: Session = Depends(get_db)):
 async def get_user_reviews(user_id: str, db: Session = Depends(get_db)):
     """Получить список Review по created_by_user_id"""
     # Проверяем существование пользователя
-    user = db.get(User, user_id=user_id)
+    user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     # Получаем все ревью для пользователя
-    reviews = db.execute(
+    reviews = db.scalars(
         select(Review)
         .where(Review.created_by_user_id == user_id)
     ).all()
     
     result = []
-    for review, created_by_user in reviews:
+    for review in reviews:
         result.append(ReviewOut(
             review_id=review.review_id,
             title=review.title,
@@ -199,12 +215,10 @@ async def get_user_reviews(user_id: str, db: Session = Depends(get_db)):
 @router.get("/api/user/{user_id}/surveys", response_model=List[SurveyWithUserOut])
 async def get_user_surveys(user_id: str, db: Session = Depends(get_db)):
     """Получить Survey по evaluator_user_id"""
-    # Проверяем существование пользователя
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Получаем все опросы для пользователя как evaluator
     surveys = db.execute(
         select(Survey, Review, User)
         .join(Review, Survey.review_id == Review.review_id)
@@ -234,3 +248,72 @@ async def get_user_surveys(user_id: str, db: Session = Depends(get_db)):
         ))
     
     return result
+
+
+@router.get("/api/review/{review_id}", response_model=ReviewOut)
+async def get_review(review_id: str, db: Session = Depends(get_db)):
+    """Получить информацию о ревью по ID"""
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    
+    return ReviewOut(
+        review_id=review.review_id,
+        title=review.title,
+        description=review.description,
+        anonymity=review.anonymity,
+        status=review.status.value,
+        start_at=review.start_at,
+        end_at=review.end_at,
+        review_link=review.review_link
+    )
+
+@router.post("/api/review/create", response_model=ReviewOut)
+# , _: None = Depends(require_bot_auth)
+def create_review(
+    payload: CreateReviewIn, request: Request, db: Session = Depends(get_db)
+):
+    
+    created_by = db.get(User, payload.created_by_user_id)
+    subject = db.get(User, payload.subject_user_id)
+    if not created_by or not subject:
+        raise HTTPException(status_code=404, detail=f"User not found: {payload.created_by_user_id}, {payload.subject_user_id}.")
+    review = Review(
+        created_by_user_id=payload.created_by_user_id,
+        subject_user_id=payload.subject_user_id,
+        title=payload.title,
+        description=payload.description,
+        anonymity=payload.anonymity,
+        start_at=payload.start_at,
+        end_at=payload.end_at,
+        status=ReviewStatus.draft,
+    )
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+
+    t = sign_token({"role": "admin", "sub": review.review_id}, ttl_sec=settings.ADMIN_LINK_TTL)
+    admin_link = f"/admin/reviews/{review.review_id}?t={t}"
+    review.review_link = admin_link
+    db.commit()
+    db.refresh(review)
+    return review
+
+@router.post("/api/reviews/{review_id}/surveys")
+# _: None = Depends(require_bot_auth)
+def create_surveys(
+    review_id: str, payload: CreateSurveysIn, request: Request, db: Session = Depends(get_db), 
+):
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    created = []
+    for uid in payload.evaluator_user_ids:
+        s = Survey(review_id=review_id, evaluator_user_id=uid, status=SurveyStatus.not_started)
+        db.add(s)
+        db.commit()
+        t = sign_token({"role": "respondent", "sub": s.survey_id}, ttl_sec=settings.RESPONDENT_LINK_TTL)
+        s.survey_link = f"/form/{s.survey_id}?t={t}"
+        db.commit()
+    return {'task': 'ok'}

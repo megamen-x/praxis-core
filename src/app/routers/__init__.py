@@ -1,1 +1,1 @@
-from . import admin, surveys, tg
+from . import admin, surveys, api
