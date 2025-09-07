@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select
+from src.app.core.config import settings
 from src.db.session import get_db
 from src.db.models import Survey, Review, Question, Answer, SurveyStatus, QuestionType, QuestionOption
 from src.app.schemas.answer import SaveAnswersIn
@@ -16,7 +17,7 @@ from sqlalchemy import delete as sa_delete, select
 from src.db.models.answer import AnswerSelection
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+templates = Jinja2Templates(directory=settings.JINJA2_TEMPLATES)
 
 
 def utcnow() -> datetime:

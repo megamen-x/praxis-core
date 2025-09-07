@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update, delete, func
+from src.app.core.config import settings
 from src.db.session import get_db
 from src.app.core.security import verify_csrf, issue_csrf
 from src.app.schemas.review import UpdateReviewIn
@@ -20,7 +21,7 @@ from src.db.models.question_bank import QuestionBlock
 from src.app.services.review_blocks import add_block_to_review
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+templates = Jinja2Templates(directory=settings.JINJA2_TEMPLATES)
 
 @router.get("/admin/reviews/{review_id}", response_class=HTMLResponse)
 async def admin_review_page(review_id: str, request: Request, t: str = Query(...), db: Session = Depends(get_db)):

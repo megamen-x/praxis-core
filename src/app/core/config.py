@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     ADMIN_LINK_TTL: int = 60 * 60 * 24  # 24h
     RESPONDENT_LINK_TTL: int = 60 * 60 * 24 * 7  # 7 days
+    JINJA2_TEMPLATES: str = "src/app/templates"
 
 
 settings = Settings()
