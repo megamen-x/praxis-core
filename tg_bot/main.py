@@ -179,9 +179,9 @@ async def list_forms(message: types.Message):
         
         response_text = "📋 Список созданных форм:\n\n"
         for form in forms:
-            response_text += f"ID: {form['id']}\n"
-            response_text += f"Тег пользователя: {form['subject_user_id']}\n"
-            response_text += f"Создано: {form['created_at']}\n"
+            response_text += f"ID: {form['review_id']}\n"
+            # response_text += f"Тег пользователя: {form['subject_user_id']}\n"
+            response_text += f"status: {form['status']}\n"
         
         await message.answer(response_text)
         

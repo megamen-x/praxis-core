@@ -63,7 +63,7 @@ def check_telegram(user_id: str, db: Session = Depends(get_db)):
 @router.post("/api/users/{user_id}/is_admin", status_code=status.HTTP_201_CREATED)
 def is_admin(user_id: str, db: Session = Depends(get_db)):
     """Проверить человека на возможность создавать ревью"""
-    user = db.get(User, user_id=user_id)
+    user = db.get(User, user_id)
     if not user:
         return {'result': 'error'}
     return {'is_admin': 1 if user.can_create_review else 0}
@@ -163,18 +163,20 @@ def get_user_reports(user_id: str, db: Session = Depends(get_db)):
 def get_user_reviews(user_id: str, db: Session = Depends(get_db)):
     """Получить список Review по created_by_user_id"""
     # Проверяем существование пользователя
-    user = db.get(User, user_id=user_id)
+    user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     # Получаем все ревью для пользователя
-    reviews = db.execute(
+    reviews = db.scalars(
         select(Review)
         .where(Review.created_by_user_id == user_id)
     ).all()
     
+    print(reviews)
+    
     result = []
-    for review, created_by_user in reviews:
+    for review in reviews:
         result.append(ReviewOut(
             review_id=review.review_id,
             title=review.title,
@@ -183,7 +185,7 @@ def get_user_reviews(user_id: str, db: Session = Depends(get_db)):
             status=review.status.value,
             start_at=review.start_at,
             end_at=review.end_at,
-        ))  
+        ))
     
     return result
 
