@@ -1,0 +1,221 @@
+{# 
+Ожидаемые данные:
+- mark_name: str
+- employee_name: str
+- strong_sides: list[ { "side_description": str, "proofs": list[str] } ]
+- weak_sides:   list[ { "side_description": str, "proofs": list[str] } ]
+- ambiguous_sides: list[ { "side_description": str } ]
+- recommendations: list[ { "side_description": str, "brief_explanation": str, "recommendation": str } ]
+- visualization_url: str (URL картинки)
+- quotes_layout: 'inline' | 'sublist'  (необязательное; по умолчанию 'inline')
+#}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Итоговый отчет</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+
+    html, body {
+      font-family: 'Montserrat', Arial, sans-serif;
+      font-size: 14pt;
+      color: #000;
+      margin: 0;
+      padding: 24px;
+    }
+
+    /* Заголовки */
+    h1 {
+      font-size: 18pt;
+      font-weight: 700;
+      text-align: center;
+      margin: 0 0 18pt 0;
+    }
+    h2 {
+      font-size: 16pt;
+      font-weight: 700;
+      text-align: center;
+      margin: 18pt 0 8pt 0;
+    }
+
+    /* Параграфы (красная строка 1.25см) */
+    p {
+      text-align: justify;
+      text-indent: 1.25cm;
+      margin: 0 0 8pt 0;
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    /* Общие правила для списков */
+    ul {
+      list-style: none;
+      padding-left: 0;
+      margin: 6pt 0 12pt 0;
+    }
+    li {
+      position: relative;
+      padding-left: 1.2em; /* место под маркер "–" */
+      text-align: justify;
+      font-weight: 400;
+      font-style: normal;
+    }
+    li::before {
+      content: "–";
+      position: absolute;
+      left: 0;
+    }
+    .end-punct {
+      /* дополнительного форматирования не требуется; элемент-индикатор завершающей пунктуации */
+    }
+
+    /* Подсписки (для цитат и подпунктов) */
+    ul.sublist {
+      margin-top: 4pt;
+      margin-bottom: 4pt;
+    }
+
+    /* Аккуратная пометка сноски у заголовка */
+    .fn-ref {
+      font-weight: 400;
+      font-size: 0.9em;
+      color: #666;
+      vertical-align: super;
+      margin-left: 4px;
+      text-decoration: none;
+    }
+    .fn-ref a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    /* Сноска внизу */
+    .footnote-sep {
+      border: none;
+      border-top: 1px solid #ccc;
+      margin: 18pt 0 8pt 0;
+    }
+    .footnote {
+      text-align: justify;
+      text-indent: 1.25cm; /* красная строка для сноски как для обычного абзаца */
+      margin: 0;
+    }
+
+    /* Картинка визуализации */
+    .viz img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 8pt auto 0 auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Заголовок 1 уровня -->
+  <h1>Итоговый отчет по оценке {{ mark_name }} сотрудника {{ employee_name }}</h1>
+
+  <!-- Сильные стороны -->
+  <h2>Сильные стороны:</h2>
+  {% if strong_sides %}
+  <ul>
+    {% for item in strong_sides %}
+      <li>
+        {% if (quotes_layout | default('inline')) == 'inline' %}
+          <span class="li-text">
+            {{ item.side_description }}{% if item.proofs and item.proofs|length > 0 %}:
+              {% for q in item.proofs %}
+                «{{ q }}»{% if not loop.last %}; {% endif %}
+              {% endfor %}
+            {% endif %}
+          </span>
+          <span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span>
+        {% else %}
+          <span class="li-text">{{ item.side_description }}</span>
+          {% if item.proofs and item.proofs|length > 0 %}
+          <ul class="sublist">
+            {% for q in item.proofs %}
+              <li><span class="li-text">«{{ q }}»</span><span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span></li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          <span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <!-- Точки роста -->
+  <h2>Точки роста:</h2>
+  {% if weak_sides %}
+  <ul>
+    {% for item in weak_sides %}
+      <li>
+        {% if (quotes_layout | default('inline')) == 'inline' %}
+          <span class="li-text">
+            {{ item.side_description }}{% if item.proofs and item.proofs|length > 0 %}:
+              {% for q in item.proofs %}
+                «{{ q }}»{% if not loop.last %}; {% endif %}
+              {% endfor %}
+            {% endif %}
+          </span>
+          <span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span>
+        {% else %}
+          <span class="li-text">{{ item.side_description }}</span>
+          {% if item.proofs and item.proofs|length > 0 %}
+          <ul class="sublist">
+            {% for q in item.proofs %}
+              <li><span class="li-text">«{{ q }}»</span><span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span></li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          <span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <!-- Спорные качества (+сноска) -->
+  <h2>Спорные качества<span class="fn-ref"><a href="#fn-ambiguous" title="См. сноску">¹</a></span>:</h2>
+  {% if ambiguous_sides %}
+  <ul>
+    {% for item in ambiguous_sides %}
+      <li><span class="li-text">{{ item.side_description }}</span><span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <!-- Рекомендации по работе -->
+  <h2>Рекомендации по работе:</h2>
+  {% if recommendations %}
+  <ul>
+    {% for rec in recommendations %}
+      <li>
+        <span class="li-text">{{ rec.side_description }}</span>
+        <ul class="sublist">
+          <li><span class="li-text">Краткое описание: {{ rec.brief_explanation }}</span><span class="end-punct">;</span></li>
+          <li><span class="li-text">Советы по улучшению: {{ rec.recommendation }}</span><span class="end-punct">.</span></li>
+        </ul>
+        <span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span>
+      </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <!-- Визуализация -->
+  <h2>Визуализация оценки {{ mark_name }}</h2>
+  <div class="viz">
+    <img src="{{ visualization_url }}" alt="Визуализация оценки {{ mark_name }}">
+  </div>
+
+  <!-- Сноска внизу страницы -->
+  <hr class="footnote-sep">
+  <p id="fn-ambiguous" class="footnote">
+    Спорными качествами обозначаются те характеристики, которые были отмечены некоторыми респондентами как сильные качества, а несколькими — как точки роста.
+  </p>
+
+</body>
+</html>
