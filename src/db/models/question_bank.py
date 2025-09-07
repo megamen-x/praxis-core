@@ -1,9 +1,9 @@
 # db/models/question_bank.py
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Text, Integer, Enum, Boolean, ForeignKey, DateTime, UniqueConstraint, func
-from db import Base
-from db.models.user import User
-from db.models.question import QuestionType  # or move QuestionType to a shared module
+from src.db import Base
+from src.db.models.user import User
+from src.db.models.question import QuestionType  # or move QuestionType to a shared module
 import uuid
 
 class QuestionTemplate(Base):

@@ -1,7 +1,7 @@
 # db/models/survey.py
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Text, DateTime, Enum, ForeignKey, Boolean, func
-from db import Base
+from src.db import Base
 import enum
 import uuid
 

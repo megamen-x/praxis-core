@@ -2,7 +2,7 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy import String, Text, Boolean, DateTime, Enum, ForeignKey, Integer, func
-from db import Base
+from src.db import Base
 import enum
 import uuid
 

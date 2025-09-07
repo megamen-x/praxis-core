@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-from db.session import LocalSession, engine
-from db.models import User
-from db import Base
+from src.db.session import LocalSession, engine
+from src.db.models import User
+from src.db import Base
 
 def get_or_create(db, email, **kwargs):
     obj = db.query(User).filter(User.email == email).first()

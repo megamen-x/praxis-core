@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Text, Integer, Enum, ForeignKey, Boolean
-from db import Base
+from src.db import Base
 import enum
 import uuid
 

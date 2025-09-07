@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.APP_NAME, debug=settings.DEBUG)
 
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-templates = Jinja2Templates(directory="app/templates")
+app.mount("/static", StaticFiles(directory="src/app/static"), name="static")
+templates = Jinja2Templates(directory="src/app/templates")
 
 app.include_router(admin.router)
 app.include_router(surveys.router)

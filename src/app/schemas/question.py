@@ -1,6 +1,6 @@
 from typing import Optional, Union, List
 from pydantic import BaseModel, Field
-from db.models.question import QuestionType
+from src.db.models.question import QuestionType
 
 class QuestionOptionIn(BaseModel):
     option_text: str

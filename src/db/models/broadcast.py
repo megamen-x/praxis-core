@@ -1,7 +1,7 @@
 from sqlalchemy.orm import mapped_column
 from sqlalchemy import String, Text, Integer, DateTime
 from datetime import datetime
-from db import Base
+from src.db import Base
 
 class Broadcast(Base):
     __tablename__ = "broadcasts"

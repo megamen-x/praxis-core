@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Text, ForeignKey, PrimaryKeyConstraint
-from db import Base
+from src.db import Base
 import uuid
 
 class AnswerSelection(Base):
