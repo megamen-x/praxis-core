@@ -25,6 +25,7 @@ class Survey(Base):
     declined_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_reminder_at: Mapped["DateTime | None"] = mapped_column(DateTime(timezone=True), nullable=True)
     submitted_at: Mapped["DateTime | None"] = mapped_column(DateTime(timezone=True), nullable=True)
+    survey_link: Mapped[str] = mapped_column(String, nullable=True)
 
     review = relationship("Review", back_populates="surveys")
     evaluator = relationship("User")

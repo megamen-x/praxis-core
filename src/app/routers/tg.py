@@ -12,7 +12,7 @@ from src.app.services.links import sign_token
 
 router = APIRouter()
 
-@router.post("/api/tg/reviews/create")
+@router.post("/api/review/create")
 # , _: None = Depends(require_bot_auth)
 def tg_create_review(
     payload: CreateReviewIn, request: Request, db: Session = Depends(get_db)

@@ -21,5 +21,4 @@ class Answer(Base):
     question = relationship("Question", back_populates="answers")
     survey = relationship("Survey", back_populates="answers")
 
-    # Важно: secondary указывает таблицу-связку; back_populates — парная связь в QuestionOption
     selected_options = relationship("QuestionOption", secondary="answer_selections", back_populates="answers")

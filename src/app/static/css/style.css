@@ -353,3 +353,10 @@ input[type=range].form-range.slider-progress:hover::-ms-fill-lower {
   background: #3A36CB;
   border-color: #272246;
 }
+
+/* Modal */
+
+.modal-content {
+  color: var(--ink);
+  background-color: #272246;
+}

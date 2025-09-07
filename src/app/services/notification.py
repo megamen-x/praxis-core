@@ -13,23 +13,10 @@ logger = logging.getLogger(__name__)
 
 class NotificationService:
     """Сервис для отправки уведомлений в Telegram"""
-    
-    def __init__(self, bot_token: str):
-        self.bot_token = bot_token
-        self.bot = None
-    
-    async def _get_bot(self):
-        """Ленивая инициализация бота"""
-        if self.bot is None:
-            from aiogram import Bot
-            from aiogram.client.default import DefaultBotProperties
-            from aiogram.enums import ParseMode
-            
-            self.bot = Bot(
-                token=self.bot_token, 
-                default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
-            )
-        return self.bot
+
+    def __init__(self, bot):
+        # Используем уже созданный экземпляр бота из tg_bot.py
+        self.bot = bot
     
     async def send_notification(self, user_id: str, message: str, db: Session) -> bool:
         """
@@ -47,9 +34,7 @@ class NotificationService:
                 logger.warning(f"Пользователь {user_id} не найден или не имеет telegram_chat_id")
                 return False
             
-            bot = await self._get_bot()
-            
-            await bot.send_message(
+            await self.bot.send_message(
                 chat_id=user.telegram_chat_id,
                 text=message
             )
@@ -105,7 +90,9 @@ def get_notification_service() -> NotificationService:
     """Получить экземпляр сервиса уведомлений"""
     global notification_service
     if notification_service is None:
-        notification_service = NotificationService(settings.TG_BOT_TOKEN)
+        # Импортируем бота из единого места, чтобы не создавать второй экземпляр
+        from src.tg_bot import bot as tg_bot_instance
+        notification_service = NotificationService(tg_bot_instance)
     return notification_service
 
 

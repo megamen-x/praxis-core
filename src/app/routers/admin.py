@@ -15,7 +15,7 @@ from src.app.services.links import verify_token
 # models
 from src.db.models.review import Review
 from src.db.models.question import Question, QuestionType, QuestionOption
-from src.db.models.question_bank import QuestionBlock
+from src.db.models.question_bank import QuestionBlock, QuestionBlockItem, QuestionTemplate, QuestionTemplateOption
 
 # service to materialize a block
 from src.app.services.review_blocks import add_block_to_review
@@ -301,3 +301,240 @@ async def add_block(review_id: str, block_id: str, _: BlockRefIn, request: Reque
         raise HTTPException(status_code=400, detail=str(e))
 
     return {"ok": True, "count": count}
+
+
+# Create a new question block for the review's author
+@router.post("/api/question-blocks")
+async def create_question_block(request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
+    token = verify_token(t)
+    if not token or token.get("role") != "admin" or token.get("sub") != review_id:
+        raise HTTPException(status_code=401)
+    if not verify_csrf(request, request.headers.get("X-CSRF-Token", ""), scope=f"admin:{review_id}"):
+        raise HTTPException(status_code=403, detail="Bad CSRF")
+
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    is_public = bool(body.get("is_public", False))
+    items = body.get("items") or []
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Block name is required")
+
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    block = QuestionBlock(
+        created_by_user_id=review.created_by_user_id,
+        name=name,
+        is_public=is_public,
+    )
+    db.add(block)
+    db.flush()
+
+    for idx, it in enumerate(items):
+        qtext = (it.get("question_text") or "").strip()
+        qtype = it.get("question_type")
+        is_required = bool(it.get("is_required", False))
+        options = it.get("options")
+        if not qtext or not qtype:
+            continue
+
+        try:
+            qtype_enum = QuestionType(qtype)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Unsupported question type: {qtype}")
+
+        tmpl = QuestionTemplate(
+            created_by_user_id=review.created_by_user_id,
+            question_text=qtext,
+            question_type=qtype_enum,
+            category=None,
+            meta_json=None,
+        )
+        db.add(tmpl)
+        db.flush()
+
+        if qtype_enum in (QuestionType.radio, QuestionType.checkbox):
+            for i, opt in enumerate(options or []):
+                label = (opt.get("option_text") or opt.get("label") or opt.get("value") or "").strip()
+                if not label:
+                    continue
+                db.add(QuestionTemplateOption(
+                    question_template_id=tmpl.question_template_id,
+                    option_text=label,
+                    position=i,
+                ))
+        elif qtype_enum == QuestionType.range_slider:
+            # options expected as {min, max, step}
+            try:
+                rng = {
+                    "min": int((options or {}).get("min", 1)),
+                    "max": int((options or {}).get("max", 10)),
+                    "step": int((options or {}).get("step", 1)),
+                }
+            except Exception:
+                rng = {"min": 1, "max": 10, "step": 1}
+            import json as _json
+            tmpl.meta_json = _json.dumps(rng)
+
+        db.add(QuestionBlockItem(
+            block_id=block.block_id,
+            question_template_id=tmpl.question_template_id,
+            position=idx + 1,
+            is_required=is_required,
+        ))
+
+    db.commit()
+    return {"ok": True, "block": {"block_id": block.block_id, "name": block.name, "is_public": block.is_public}}
+
+
+# Update block metadata (name, is_public)
+@router.patch("/api/question-blocks/{block_id}")
+async def update_question_block(block_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
+    token = verify_token(t)
+    if not token or token.get("role") != "admin" or token.get("sub") != review_id:
+        raise HTTPException(status_code=401)
+    if not verify_csrf(request, request.headers.get("X-CSRF-Token", ""), scope=f"admin:{review_id}"):
+        raise HTTPException(status_code=403, detail="Bad CSRF")
+
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    block = db.get(QuestionBlock, block_id)
+    if not block:
+        raise HTTPException(status_code=404, detail="Block not found")
+    if block.created_by_user_id != review.created_by_user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    body = await request.json()
+    name = body.get("name")
+    is_public = body.get("is_public")
+    if name is not None:
+        name = name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Block name cannot be empty")
+        block.name = name
+    if is_public is not None:
+        block.is_public = bool(is_public)
+    db.commit()
+    return {"ok": True}
+
+
+# Replace block items with provided items
+@router.put("/api/question-blocks/{block_id}/items")
+async def replace_block_items(block_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
+    token = verify_token(t)
+    if not token or token.get("role") != "admin" or token.get("sub") != review_id:
+        raise HTTPException(status_code=401)
+    if not verify_csrf(request, request.headers.get("X-CSRF-Token", ""), scope=f"admin:{review_id}"):
+        raise HTTPException(status_code=403, detail="Bad CSRF")
+
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    block = db.get(QuestionBlock, block_id)
+    if not block:
+        raise HTTPException(status_code=404, detail="Block not found")
+    if block.created_by_user_id != review.created_by_user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    body = await request.json()
+    items = body.get("items") or []
+
+    # Remove old items and their templates/options
+    old_items = list(block.items)
+    for bi in old_items:
+        tmpl = bi.question_template
+        # delete options
+        for opt in list(tmpl.options or []):
+            db.delete(opt)
+        db.delete(bi)
+        db.delete(tmpl)
+    db.flush()
+
+    # Create new items
+    for idx, it in enumerate(items):
+        qtext = (it.get("question_text") or "").strip()
+        qtype = it.get("question_type")
+        is_required = bool(it.get("is_required", False))
+        options = it.get("options")
+        if not qtext or not qtype:
+            continue
+        try:
+            qtype_enum = QuestionType(qtype)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Unsupported question type: {qtype}")
+
+        tmpl = QuestionTemplate(
+            created_by_user_id=review.created_by_user_id,
+            question_text=qtext,
+            question_type=qtype_enum,
+            category=None,
+            meta_json=None,
+        )
+        db.add(tmpl)
+        db.flush()
+
+        if qtype_enum in (QuestionType.radio, QuestionType.checkbox):
+            for i, opt in enumerate(options or []):
+                label = (opt.get("option_text") or opt.get("label") or opt.get("value") or "").strip()
+                if not label:
+                    continue
+                db.add(QuestionTemplateOption(
+                    question_template_id=tmpl.question_template_id,
+                    option_text=label,
+                    position=i,
+                ))
+        elif qtype_enum == QuestionType.range_slider:
+            try:
+                rng = {
+                    "min": int((options or {}).get("min", 1)),
+                    "max": int((options or {}).get("max", 10)),
+                    "step": int((options or {}).get("step", 1)),
+                }
+            except Exception:
+                rng = {"min": 1, "max": 10, "step": 1}
+            import json as _json
+            tmpl.meta_json = _json.dumps(rng)
+
+        db.add(QuestionBlockItem(
+            block_id=block.block_id,
+            question_template_id=tmpl.question_template_id,
+            position=idx + 1,
+            is_required=is_required,
+        ))
+
+    db.commit()
+    return {"ok": True}
+
+
+# Delete block entirely
+@router.delete("/api/question-blocks/{block_id}")
+async def delete_question_block(block_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
+    token = verify_token(t)
+    if not token or token.get("role") != "admin" or token.get("sub") != review_id:
+        raise HTTPException(status_code=401)
+    if not verify_csrf(request, request.headers.get("X-CSRF-Token", ""), scope=f"admin:{review_id}"):
+        raise HTTPException(status_code=403, detail="Bad CSRF")
+
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    block = db.get(QuestionBlock, block_id)
+    if not block:
+        raise HTTPException(status_code=404, detail="Block not found")
+    if block.created_by_user_id != review.created_by_user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # delete items and their templates/options first
+    for bi in list(block.items):
+        tmpl = bi.question_template
+        for opt in list(tmpl.options or []):
+            db.delete(opt)
+        db.delete(bi)
+        db.delete(tmpl)
+    db.delete(block)
+    db.commit()
+    return {"ok": True}

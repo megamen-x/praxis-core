@@ -99,6 +99,7 @@
     <div class="col-md-6 d-flex gap-2">
       <button id="btn-load-blocks" class="btn btn-secondary" type="button">Обновить список</button>
       <button id="btn-add-block" class="btn btn-brutal" type="button">Добавить блок</button>
+      <button id="btn-open-create-block" class="btn btn-outline-secondary" type="button">Создать свой блок</button>
     </div>
   </div>
   <div id="block-info" class="small mt-2 text-muted"></div>
@@ -496,7 +497,7 @@
     blocks.forEach(b => {
       const opt = document.createElement('option');
       opt.value = b.block_id;
-      opt.textContent = `${b.name} ${b.items_count ? '('+b.items_count+')' : ''}${b.is_public ? ' • общий' : ''}`;
+      opt.textContent = `${b.name} ${b.items_count ? '(Вопросов: '+b.items_count+')' : ''}${b.is_public ? ' • общий' : ''}`;
       blockSelect.appendChild(opt);
     });
   }
@@ -515,5 +516,162 @@
 
   // initial blocks load
   loadBlocks();
+
+  // Create Block Modal
+  const modalHtml = `
+  <div class="modal fade" id="createBlockModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title mono">Создать свой блок</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label mono">Название блока</label>
+            <input id="cb-name" class="form-control brutal-input" placeholder="Название блока">
+          </div>
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <label class="form-label-sec mono mb-0">Видимость блока</label>
+            <select id="cb-public" class="form-select brutal-input" style="max-width:220px">
+              <option value="false">Приватный</option>
+              <option value="true">Общий</option>
+            </select>
+          </div>
+
+          <div class="q-block">
+            <h6 class="mono">Вопросы блока</h6>
+            <div id="cb-questions"></div>
+            <button id="cb-btn-add-q" class="btn btn-secondary" type="button">Добавить вопрос</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="cb-btn-delete-block" class="btn btn-outline-danger d-none">Удалить блок</button>
+          <button type="button" id="cb-btn-save-block" class="btn btn-brutal">Сохранить блок</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  // inject modal once
+  if (!document.getElementById('createBlockModal')) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = modalHtml;
+    document.body.appendChild(wrap.firstElementChild);
+  }
+
+  let bsModalInstance = null;
+  function openCreateBlockModal() {
+    const modalEl = document.getElementById('createBlockModal');
+    if (!window.bootstrap || !window.bootstrap.Modal) {
+      // fallback lazy load if needed; assuming bootstrap present in base.html
+    }
+    bsModalInstance = new bootstrap.Modal(modalEl);
+    // reset form
+    document.getElementById('cb-name').value = '';
+    document.getElementById('cb-public').value = 'false';
+    document.getElementById('cb-btn-delete-block').classList.add('d-none');
+    const list = document.getElementById('cb-questions');
+    list.innerHTML = '';
+    addBlockQuestionRow();
+    bsModalInstance.show();
+  }
+
+  function addBlockQuestionRow(prefill = null) {
+    const list = document.getElementById('cb-questions');
+    const row = document.createElement('div');
+    row.className = 'q-block mt-2';
+    row.innerHTML = `
+      <div class="col-12">
+        <label class="form-label mono">Новый вопрос</label>
+        <input class="form-control brutal-input mb-2 q-text" placeholder="Текст вопроса" value="${prefill?.question_text||''}">
+      </div>
+      <div class="row g-2 align-content-center">
+        <label class="form-label mono">Параметры вопроса</label>
+        <div style="display:flex; flex-direction: row; justify-content: center; align-items: center" class="row g-2">
+          <div class="col-md-3">
+            <label class="form-label-sec mono">Формат ответа</label>
+            <select class="form-select brutal-input q-type">
+              <option value="text">Текст (строка)</option>
+              <option value="textarea">Текст (абзац)</option>
+              <option value="radio">Один из списка</option>
+              <option value="checkbox">Несколько из списка</option>
+              <option value="range_slider">Слайдер</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label-sec mono">Обязательный?</label>
+            <div class="form-check">
+              <input class="form-check-input q-req" type="checkbox" ${prefill?.is_required? 'checked':''}>
+              <label class="form-check-label">Обязательный</label>
+            </div>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button type="button" class="btn btn-outline-danger cb-del-q">Удалить вопрос</button>
+          </div>
+        </div>
+      </div>
+      <label class="form-label mono">Поле ответа</label>
+      <div class="answers-ui mt-2"></div>
+    `;
+    list.appendChild(row);
+    const typeSel = row.querySelector('.q-type');
+    if (prefill?.question_type) typeSel.value = prefill.question_type;
+    renderAnswers(row, typeSel.value, prefill?.options ? { options: prefill.options } : (prefill?.meta || {}));
+    typeSel.addEventListener('change', () => renderAnswers(row, typeSel.value, {}));
+    row.querySelector('.cb-del-q').addEventListener('click', () => row.remove());
+  }
+
+  document.getElementById('btn-open-create-block').addEventListener('click', openCreateBlockModal);
+  document.getElementById('cb-btn-add-q')?.addEventListener('click', () => addBlockQuestionRow());
+
+  // delegate add button because modal is injected later
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'cb-btn-add-q') {
+      e.preventDefault();
+      addBlockQuestionRow();
+    }
+  });
+
+  function collectBlockQuestions() {
+    return Array.from(document.querySelectorAll('#cb-questions .q-block')).map(b => {
+      const opts = collectOptions(b);
+      const item = {
+        question_text: b.querySelector('.q-text').value,
+        question_type: b.querySelector('.q-type').value,
+        is_required: b.querySelector('.q-req').checked,
+      };
+      if (opts !== null) item.options = opts;
+      return item;
+    });
+  }
+
+  async function saveCustomBlock() {
+    const name = document.getElementById('cb-name').value.trim();
+    const isPublic = document.getElementById('cb-public').value === 'true';
+    if (!name) { alert('Введите название блока'); return; }
+    const items = collectBlockQuestions();
+    if (!items.length) { alert('Добавьте хотя бы один вопрос'); return; }
+    const res = await fetch(`/api/question-blocks?review_id=${reviewId}&t=${token}`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ name, is_public: isPublic, items })
+    });
+    if (!res.ok) { alert('Не удалось сохранить блок'); return; }
+    const data = await res.json();
+    // refresh select
+    await loadBlocks();
+    // preselect just created
+    if (data?.block?.block_id) blockSelect.value = data.block.block_id;
+    const modalEl = document.getElementById('createBlockModal');
+    bootstrap.Modal.getInstance(modalEl)?.hide();
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'cb-btn-save-block') {
+      e.preventDefault();
+      saveCustomBlock();
+    }
+  });
 </script>
 {% endblock %}

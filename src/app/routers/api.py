@@ -9,22 +9,30 @@ from src.app.schemas.user import UserOut, UserCreate, UserUpdate
 from src.app.schemas.report import ReportWithReviewOut
 from src.app.schemas.survey import SurveyWithUserOut
 from src.app.schemas.review import ReviewOut
-from src.app.services.export import export_database_to_json, export_database_to_csv, export_user_data
-from src.app.services.status_manager import get_status_manager
-from fastapi.responses import JSONResponse, Response
 from typing import List
 
 router = APIRouter()
 
 
-@router.get("/api/users", response_model=List[UserOut])
-async def get_users(db: Session = Depends(get_db)):
+@router.get("/api/user/fio", response_model=UserOut)
+async def get_user_by_fio(user_data: UserCreate, db: Session = Depends(get_db)):
     """Получить список всех пользователей"""
-    users = db.execute(select(User)).scalars().all()
-    return users
+    user = db.execute(
+            select(User).where(
+                User.middle_name == user_data.middle_name,
+                User.first_name == user_data.first_name,
+                User.last_name == user_data.last_name,
+             )
+        ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=400, 
+            detail="User is not exist with this FIO"
+        )
+    return user 
 
 
-@router.get("/api/users/{user_id}", response_model=UserOut)
+@router.get("/api/user/{user_id}", response_model=UserOut)
 async def get_user(user_id: str, db: Session = Depends(get_db)):
     """Получить пользователя по ID"""
     user = db.get(User, user_id)
@@ -33,7 +41,7 @@ async def get_user(user_id: str, db: Session = Depends(get_db)):
     return user
 
 
-@router.post("/api/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("/api/user", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     """Создать нового пользователя"""
     if user_data.email:
@@ -52,26 +60,26 @@ async def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     db.refresh(user)
     return user
 
-@router.post("/api/users/{user_id}/check-telegram", status_code=status.HTTP_201_CREATED)
+@router.post("/api/user/{user_id}/check-telegram", status_code=status.HTTP_201_CREATED)
 async def check_telegram(user_id: str, db: Session = Depends(get_db)):
     """Проверить Telegram у человека"""
-    user = db.get(User, user_id=user_id)
+    user = db.get(User, user_id)
     if not user:
         return {'result': 'error'}
     return {'is_registered': 1 if user.tg_chat_id else 0}
 
-@router.post("/api/users/{user_id}/is_admin", status_code=status.HTTP_201_CREATED)
+@router.post("/api/user/{user_id}/is_admin", status_code=status.HTTP_201_CREATED)
 async def is_admin(user_id: str, db: Session = Depends(get_db)):
     """Проверить человека на возможность создавать ревью"""
-    user = db.get(User, user_id=user_id)
+    user = db.get(User, user_id)
     if not user:
         return {'result': 'error'}
     return {'is_admin': 1 if user.can_create_review else 0}
 
-@router.post("/api/users/{user_id}/protote_to_admin", status_code=status.HTTP_201_CREATED)
+@router.post("/api/user/{user_id}/protote_to_admin", status_code=status.HTTP_201_CREATED)
 async def promote_to_admin(user_id: str, db: Session = Depends(get_db)):
     """Сделать человека админом"""
-    user = db.get(User, user_id=user_id)
+    user = db.get(User, user_id)
     if not user:
         return {'result': 'error'}
     if user.can_create_review:
@@ -82,7 +90,7 @@ async def promote_to_admin(user_id: str, db: Session = Depends(get_db)):
         db.refresh(user)
         return {'result': 'ok'}
 
-@router.put("/api/users/{user_id}", response_model=UserOut)
+@router.put("/api/user/{user_id}", response_model=UserOut)
 async def update_user(user_id: str, user_data: UserUpdate, db: Session = Depends(get_db)):
     """Обновить пользователя"""
     user = db.get(User, user_id)
@@ -110,7 +118,7 @@ async def update_user(user_id: str, user_data: UserUpdate, db: Session = Depends
     return user
 
 
-@router.delete("/api/users/{user_id}")
+@router.delete("/api/user/{user_id}")
 async def delete_user(user_id: str, db: Session = Depends(get_db)):
     """Удалить пользователя"""
     user = db.get(User, user_id)
@@ -122,7 +130,7 @@ async def delete_user(user_id: str, db: Session = Depends(get_db)):
     return {"ok": True, "message": "User deleted successfully"}
 
 
-@router.get("/api/users/{user_id}/reports", response_model=List[ReportWithReviewOut])
+@router.get("/api/user/{user_id}/reports", response_model=List[ReportWithReviewOut])
 async def get_user_reports(user_id: str, db: Session = Depends(get_db)):
     """Получить отчеты по конкретному сотруднику (subject_user_id)"""
     # Проверяем существование пользователя
@@ -159,7 +167,7 @@ async def get_user_reports(user_id: str, db: Session = Depends(get_db)):
     return result
 
 
-@router.get("/api/users/{user_id}/reviews", response_model=List[ReviewOut])
+@router.get("/api/user/{user_id}/reviews", response_model=List[ReviewOut])
 async def get_user_reviews(user_id: str, db: Session = Depends(get_db)):
     """Получить список Review по created_by_user_id"""
     # Проверяем существование пользователя
@@ -188,7 +196,7 @@ async def get_user_reviews(user_id: str, db: Session = Depends(get_db)):
     return result
 
 
-@router.get("/api/users/{user_id}/surveys", response_model=List[SurveyWithUserOut])
+@router.get("/api/user/{user_id}/surveys", response_model=List[SurveyWithUserOut])
 async def get_user_surveys(user_id: str, db: Session = Depends(get_db)):
     """Получить Survey по evaluator_user_id"""
     # Проверяем существование пользователя
@@ -226,62 +234,3 @@ async def get_user_surveys(user_id: str, db: Session = Depends(get_db)):
         ))
     
     return result
-
-
-@router.get("/api/export/database/json")
-async def export_database_json(db: Session = Depends(get_db)):
-    """Экспортировать всю базу данных в формате JSON"""
-    try:
-        json_data = export_database_to_json(db)
-        return JSONResponse(
-            content=json.loads(json_data),
-            media_type="application/json"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка при экспорте: {str(e)}")
-
-
-@router.get("/api/export/database/csv")
-async def export_database_csv(db: Session = Depends(get_db)):
-    """Экспортировать всю базу данных в формате CSV (ZIP архив)"""
-    try:
-        import zipfile
-        import io
-        
-        csv_data = export_database_to_csv(db)
-        
-        # Создаем ZIP архив с CSV файлами
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for filename, content in csv_data.items():
-                zip_file.writestr(filename, content)
-        
-        zip_buffer.seek(0)
-        
-        return Response(
-            content=zip_buffer.getvalue(),
-            media_type="application/zip",
-            headers={"Content-Disposition": "attachment; filename=database_export.zip"}
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка при экспорте: {str(e)}")
-
-
-@router.get("/api/export/users/{user_id}")
-async def export_user_data_endpoint(user_id: str, db: Session = Depends(get_db)):
-    """Экспортировать данные конкретного пользователя"""
-    try:
-        # Проверяем существование пользователя
-        user = db.get(User, user_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        json_data = export_user_data(db, user_id)
-        return JSONResponse(
-            content=json.loads(json_data),
-            media_type="application/json"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка при экспорте: {str(e)}")

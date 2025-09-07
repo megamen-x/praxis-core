@@ -26,6 +26,7 @@ class Review(Base):
     start_at: Mapped["DateTime | None"] = mapped_column(DateTime(timezone=True), nullable=True)
     end_at: Mapped["DateTime | None"] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped["DateTime"] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    review_link: Mapped[str] = mapped_column(String, nullable=True)
 
     created_by = relationship("User", back_populates="created_reviews", foreign_keys=[created_by_user_id])
     subject_user = relationship("User", back_populates="subject_reviews", foreign_keys=[subject_user_id])
