@@ -33,15 +33,17 @@ async def _send_many(messages: list[tuple[int, str, str]]) -> None:
 
     for chat_id, text, url in messages:
         try:
-            kb = InlineKeyboardBuilder()
-            site_url = 'http://'+ settings.HOST + ':' + settings.PORT
-            kb.button(text='Пройти опрос', url=site_url + url)
-            await bot_service.bot.send_message(
-                chat_id=chat_id,
-                text=text,
-                reply_markup=kb.as_markup()
-            )
-            await bot_service.bot.send_message(chat_id=chat_id, text=text)
+            if url!='':
+                kb = InlineKeyboardBuilder()
+                site_url = 'http://'+ settings.HOST + ':' + settings.PORT
+                kb.button(text='Пройти опрос', url=site_url + url)
+                await bot_service.bot.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    reply_markup=kb.as_markup()
+                )
+            else:
+                await bot_service.bot.send_message(chat_id=chat_id, text=text)
         except Exception as e:
             logger.error("Failed to send message to %s: %s", chat_id, e)
 
