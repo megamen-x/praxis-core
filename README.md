@@ -1,5 +1,5 @@
 <a name="readme-top"></a>  
-<div align="center"><img width="100%" src="https://github.com/megamen-x/praxis-core/blob/main/src/app/static/assets/praxis_banner.png" alt="product banner"></div>
+<div align="center"><img width="100%" src="https://github.com/megamen-x/praxis-core/blob/vibe-code-nice/src/app/static/assets/praxis_banner.png" alt="product banner"></div>
 <div align="center">
   <p align="center">
     <h1 align="center">Praxis Core</h1>
