@@ -2,6 +2,7 @@
 Ожидаемые данные:
 - mark_name: str
 - employee_name: str
+- summary: str
 - strong_sides: list[ { "side_description": str, "proofs": list[str] } ]
 - weak_sides:   list[ { "side_description": str, "proofs": list[str] } ]
 - ambiguous_sides: list[ { "side_description": str } ]
@@ -67,19 +68,17 @@
       left: 0;
     }
 
-    /* Подсписки.
-       Требование: уменьшить отступ на 1.25 см относительно предыдущей версии (т.е. сдвинуть влево).
-       Было margin-left: 1.25cm; стало 0. */
+    /* Подсписки — сдвинуты левее на 1.25 см и с маркером ✧ */
     ul.sublist {
-      margin: 6pt 0 6pt 0;   /* ключевая правка: теперь без дополнительного левого отступа */
+      margin: 6pt 0 6pt 0;
       padding-left: 0;
     }
     ul.sublist li {
       padding-left: 1.2em;
     }
     ul.sublist li::before {
-      content: "✧";          /* маркер подпунктов — «искра» */
-      font-size: 1.05em;     /* немного больше текста */
+      content: "✧";
+      font-size: 1.05em;
       position: absolute;
       left: 0;
     }
@@ -152,6 +151,12 @@
 
   <!-- Заголовок 1 уровня -->
   <h1>Итоговый отчет по оценке {{ mark_name }} сотрудника {{ employee_name }}</h1>
+
+  <!-- Новый раздел: краткая характеристика -->
+  <h2>Краткая характеристика сотрудника</h2>
+  {% if summary %}
+    <p>{{ summary }}</p>
+  {% endif %}
 
   <!-- Сильные стороны -->
   <h2>Сильные стороны:</h2>

@@ -22,7 +22,7 @@ def _two_lines(s: str, width: int) -> str:
     return parts[0] + "\n" + " ".join(parts[1:])
 
 def plot_180_radar(
-    pairs: list[tuple[str, float]],
+    pairs_self: dict[str, float],
     save_to: str,
     title: str | None = "Оценка 180°",
     value_range: tuple[float, float] | None = None,
@@ -31,14 +31,16 @@ def plot_180_radar(
     wrap_width: int = 18,
     top_area: float = 0.88,
     title_y: float = 0.985,
-    label_radius: float = 1.12
+    label_radius: float = 1.12,
+    value_offset_pts: int = 12,  # смещение подписи от точки (в points)
 ):
-    if not pairs or len(pairs) < 3:
+    if not pairs_self or len(pairs_self) < 3:
         raise ValueError("At least 3 disciplines are required.")
     if not save_to:
         raise ValueError("Parameter 'save_to' must be a non-empty file path.")
-    labels, values = zip(*pairs)
-    values = np.asarray(values, dtype=float)
+
+    labels = list(pairs_self.keys())
+    values = np.asarray(list(pairs_self.values()), dtype=float)
 
     fig_bg = "#FBFCFE"
     ax_bg = "#F7F9FC"
@@ -96,7 +98,16 @@ def plot_180_radar(
 
     if show_values:
         for ang, rr, val in zip(angles, r, values):
-            ax.annotate(f"{val:.0f}" if rng > 5 else f"{val:g}", xy=(ang, rr), xytext=(0, 0), textcoords="offset points", ha="center", va="center", fontsize=10, color=txt_c)
+            ax.annotate(
+                f"{val:.0f}" if rng > 5 else f"{val:g}",
+                xy=(ang, rr),
+                xytext=(0, value_offset_pts),  # было (0, 0)
+                textcoords="offset points",
+                ha="center",
+                va="center",
+                fontsize=10,
+                color=txt_c,
+            )
 
     fig.canvas.draw()
     fig.savefig(save_to, dpi=dpi, facecolor=fig.get_facecolor(), transparent=False)
@@ -104,8 +115,8 @@ def plot_180_radar(
 
 
 def plot_360_radar(
-    pairs_self: list[tuple[str, float]],
-    pairs_mgr: list[tuple[str, float]],
+    pairs_self: dict[str, float],
+    pairs_mgr: dict[str, float],
     save_to: str,
     title: str | None = "Оценка 360°",
     value_range: tuple[float, float] | None = None,
@@ -115,22 +126,23 @@ def plot_360_radar(
     bottom_area: float = 0.14,
     title_y: float = 0.985,
     label_radius: float = 1.12,
-    show_values: bool = False
+    show_values: bool = False,
+    value_offset_mgr: int = 12,
+    value_offset_self: int = -16,
 ):
     if not pairs_self or not pairs_mgr or len(pairs_self) < 3 or len(pairs_mgr) < 3:
         raise ValueError("Each input must contain at least 3 disciplines.")
     if not save_to:
         raise ValueError("Parameter 'save_to' must be a non-empty file path.")
-    labels_s, values_s = zip(*pairs_self)
-    labels_m, values_m = zip(*pairs_mgr)
-    if set(labels_s) != set(labels_m):
+
+    labels_s = set(pairs_self.keys())
+    labels_m = set(pairs_mgr.keys())
+    if labels_s != labels_m:
         raise ValueError("Both inputs must have the same set of disciplines (labels).")
-    order = [lbl for lbl, _ in pairs_mgr]
-    d_self = dict(pairs_self)
-    d_mgr = dict(pairs_mgr)
-    labels = order
-    values_self = np.asarray([d_self[lbl] for lbl in labels], dtype=float)
-    values_mgr = np.asarray([d_mgr[lbl] for lbl in labels], dtype=float)
+
+    labels = list(pairs_mgr.keys())
+    values_self = np.asarray([pairs_self[lbl] for lbl in labels], dtype=float)
+    values_mgr = np.asarray([pairs_mgr[lbl] for lbl in labels], dtype=float)
 
     fig_bg = "#FBFCFE"
     ax_bg = "#F7F9FC"
@@ -197,15 +209,36 @@ def plot_360_radar(
 
     if show_values:
         for ang, rr, val in zip(angles, r_mgr, values_mgr):
-            ax.annotate(f"{val:.0f}", xy=(ang, rr), xytext=(0, 0), textcoords="offset points", ha="center", va="center", fontsize=10, color=txt_c)
+            ax.annotate(
+                f"{val:.0f}",
+                xy=(ang, rr),
+                xytext=(0, value_offset_mgr),  # было (0, 0)
+                textcoords="offset points",
+                ha="center",
+                va="center",
+                fontsize=10,
+                color=txt_c,
+            )
         for ang, rr, val in zip(angles, r_self, values_self):
-            ax.annotate(f"{val:.0f}", xy=(ang, rr), xytext=(0, -12), textcoords="offset points", ha="center", va="center", fontsize=9, color=txt_c)
+            ax.annotate(
+                f"{val:.0f}",
+                xy=(ang, rr),
+                xytext=(0, value_offset_self),  # было (0, -12)
+                textcoords="offset points",
+                ha="center",
+                va="center",
+                fontsize=9,
+                color=txt_c,
+            )
 
     handles = [
-        Line2D([0], [0], color=mgr_c, lw=2.6, marker="o", markersize=5, markerfacecolor=fig_bg, markeredgecolor=mgr_c, alpha=0.9),
-        Line2D([0], [0], color=self_c, lw=2.6, marker="o", markersize=5, markerfacecolor=fig_bg, markeredgecolor=self_c, alpha=0.9),
+        Line2D([0], [0], color=mgr_c, lw=2.6, marker="o", markersize=5,
+               markerfacecolor=fig_bg, markeredgecolor=mgr_c, alpha=0.9),
+        Line2D([0], [0], color=self_c, lw=2.6, marker="o", markersize=5,
+               markerfacecolor=fig_bg, markeredgecolor=self_c, alpha=0.9),
     ]
-    fig.legend(handles, ["Руководство", "Самооценка"], loc="lower center", bbox_to_anchor=(0.5, 0.03), ncol=2, frameon=False)
+    fig.legend(handles, ["Руководство", "Самооценка"], loc="lower center",
+               bbox_to_anchor=(0.5, 0.03), ncol=2, frameon=False)
 
     fig.canvas.draw()
     fig.savefig(save_to, dpi=dpi, facecolor=fig.get_facecolor(), transparent=False)

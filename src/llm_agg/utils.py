@@ -4,7 +4,7 @@ import builtins
 import numpy as np
 from openai import OpenAI
 from dotenv import load_dotenv
-from typing import Callable, Any
+from typing import Callable, Any, Mapping, Literal
 from pydantic import BaseModel
 from decimal import Decimal
  
