@@ -13,18 +13,21 @@ from src.db.models import Survey, Review, Question, Answer, SurveyStatus, Questi
 from src.app.schemas.answer import SaveAnswersIn
 from src.app.core.security import issue_csrf, verify_csrf
 from src.app.services.links import verify_token
-from src.app.core.prompts import prompt
+from src.app.core.prompts import base_prompt, recommendation_prompt
 from src.llm_agg.schemas.sides import Side, Sides
-from src.llm_agg.prompts.base import BASE_PROMPT
+from src.llm_agg.prompts.base import BASE_PROMPT_WO_TASK
+from src.llm_agg.response import get_so_completion
+from src.llm_agg.utils import remove_ambiguous_sides
+from src.llm_agg.schemas.recommendations import RecommendationItem, Recommendations
 from sqlalchemy import delete as sa_delete, select
 from src.db.models.answer import AnswerSelection
-from openai import AsyncOpenAI
+from openai import OpenAI
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-client = AsyncOpenAI(
+client = OpenAI(
     base_url=settings.BASE_URL, 
     api_key=os.getenv("OPENAI_API_KEY")
 )
@@ -95,52 +98,90 @@ async def llm_aggregation(
     review_id: str, 
     db: Session = Depends(get_db)
 ):
-    
-    surveys = db.scalars(
-        select(Survey)
+    # Fetch surveys with the given review_id
+    survey_ids = db.scalars(
+        select(Survey.survey_id)
         .where(Survey.review_id == review_id)
     ).all()
     
-    survey_ids = [survey.survey_id for survey in surveys]
+    # survey_ids = [survey.survey_id for survey in surveys]
+
+    # Fetch answers for the surveys
     answers = db.scalars(
         select(Answer)
         .where(Answer.survey_id.in_(survey_ids))
     ).all()
-    
-    response_texts = [answer.response_text for answer in answers if answer.response_text]
-    empty_response_answers = [answer.answer_id for answer in answers if not answer.response_text]
 
-    # Fetch options for answers with empty response_text
-    options_texts = db.scalars(
-        select(QuestionOption.option_text)
-        .join(AnswerSelection, AnswerSelection.option_id == QuestionOption.option_id)
-        .where(AnswerSelection.answer_id.in_(empty_response_answers))
-    ).all()
+    # Group answers by survey_id
+    grouped_answers = {}
+    for answer in answers:
+        if answer.survey_id not in grouped_answers:
+            grouped_answers[answer.survey_id] = {"response_texts": [], "option_texts": []}
 
-    feedback = response_texts + options_texts
-    feedback_str = "\n".join([f"Review {i+1}. {text}" for i, text in enumerate(feedback)])
-    
+        if answer.response_text:
+            # Fetch the question text for the answer
+            question = db.get(Question, answer.question_id)
+            question_text = question.question_text if question else "Unknown Question"
+
+            grouped_answers[answer.survey_id]["response_texts"].append([
+                question_text, answer.response_text
+            ])
+        else:
+            # Fetch option_texts for answers with empty response_text
+            option_texts = db.scalars(
+                select(QuestionOption.option_text, Question.question_text)
+                .join(AnswerSelection, AnswerSelection.option_id == QuestionOption.option_id)
+                .join(Question, QuestionOption.question_id == Question.question_id)
+                .where(AnswerSelection.answer_id == answer.answer_id)
+            ).all()
+
+            for option_text, question_text in option_texts:
+                grouped_answers[answer.survey_id]["option_texts"].append([
+                    question_text, option_text
+                ])
+
+    feedback = ''
+
+    for i, (u, v) in enumerate(grouped_answers.items()):
+        feedback += f"Фидбек № {i+1}: \n"
+        feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['response_texts']])
+        feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['option_texts']])
+        feedback += "\n"
+
+    print(feedback)
+
     log = [
-        {"role": "user", "content": BASE_PROMPT.format(task=prompt.format(feedback=feedback_str))}
+        {"role": "system", "content": BASE_PROMPT_WO_TASK},
+        {"role": "user", "content": base_prompt.format(feedback=feedback)}
     ]
+
+    completion = get_so_completion(log=log, model_name='openai/gpt-4o', client=client, pydantic_model=Sides, provider_name='openrouter')
+
+    new_msg = {
+        "role":"assistant",
+        "content": remove_ambiguous_sides(completion)
+    }
+    log.append(new_msg)
     
-    completion = await client.chat.completions.create(
-        model='openai/gpt-4o',
-        messages=log,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": Sides.__name__,
-                "schema": Sides.model_json_schema()
-            }
-        },
-        temperature=0.0
+    new_user_msg = {
+        "role": "user",
+        "content": recommendation_prompt
+    }
+    log.append(new_user_msg)
+
+    rec = get_so_completion(
+        log, 
+        model_name='openai/gpt-4o', 
+        client=client, 
+        pydantic_model=Recommendations, 
+        provider_name='openrouter'
     )
     
-    res = completion.choices[0].message.content
-    data_dict = json.loads(res)
-    
-    return data_dict
+    return {
+        "sides": json.loads(completion),
+        "recommendations": json.loads(rec)
+    }
+
 
 @router.post("/api/surveys/{survey_id}/answers")
 async def save_answers(

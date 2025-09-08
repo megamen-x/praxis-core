@@ -1,4 +1,4 @@
-prompt = """
+base_prompt = """
 You are working on a task of collecting feedback and evaluating employees.  
 Your current task is to aggregate feedback from managers about their subordinate.  
 Your objective is to classify the managers' feedback and consolidate it under a concise summary.  
@@ -14,4 +14,34 @@ Now proceed with the task.
 Feedback from managers:  
 
 {feedback}
+"""
+
+recommendation_prompt = """
+You are working on improving the qualities of your company’s employees.
+
+You are given:
+1. Reviewers’ feedback about the employee.
+2. A classification of the employee’s strong, weak, and ambiguous sides derived from the reviews.
+
+Qualities are considered ambiguous if some respondents mark them as strong and others mark them as weak.
+
+Based on these data, you need to provide recommendations on how to work with the strengths and weaknesses noted by respondents.
+General rules:
+- Always craft recommendations not only based on the JSON schema of the person’s qualities but also on the original reviewers’ feedback. They can help elaborate specific aspects of the person’s qualities.
+- For each quality, produce:
+  - brief_explanation: 1–2 sentences explaining why this recommendation is relevant, referencing observed behaviors/evidence.
+  - recommendation: 1–2 sentences starting with a verb, specifying the next step and a target outcome/metric; include a timeframe or stakeholder if applicable.
+- Avoid generic advice; tailor recommendations to the employee’s role, domain, and context found in the feedback.
+- Keep a supportive, professional tone; be specific and concise.
+- Answer in Russian.
+
+Rules for strengths:
+- If the strength has minor gaps/risks mentioned in the feedback, address them first.
+- If the strength is consistently praised, suggest ways to leverage it (e.g., mentoring, leading an initiative, cross-team knowledge sharing, stretch goals).
+
+Rules for weaknesses:
+- Focus on the most impactful root cause inferred from feedback.
+- Propose the first concrete step the employee can take in the near term (e.g., in the next sprint/month).
+
+Now proceed with the task.
 """
