@@ -1,19 +1,38 @@
 # app/routers/api.py
-from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from src.db.models.survey import SurveyStatus
+from typing import List
+import json
+
 from src.app.core.config import settings
 from src.app.services.links import sign_token
-from src.db.models.review import ReviewStatus
 from src.db.session import get_db
-from src.db.models import User, Review, Report, Survey
+from src.db.models import (
+    User,
+    Review,
+    Report,
+    Survey, SurveyStatus, 
+    Answer, AnswerSelection, 
+    Question, QuestionOption, 
+    ReviewStatus
+)
+
 from src.app.schemas.user import UserOut, UserCreate, UserUpdate
 from src.app.schemas.report import ReportWithReviewOut
 from src.app.schemas.survey import CreateSurveysIn, SurveyWithUserOut
 from src.app.schemas.review import CreateReviewIn, ReviewOut
-from typing import List
+
+from src.llm_agg.prompts import (
+    SIDES_EXTRACTING_PROMPT, 
+    RECOMMENDATIONS_PROMPT, 
+    BASE_PROMPT_WO_TASK
+)
+from src.llm_agg.schemas.sides import Sides
+from src.llm_agg.response import get_so_completion
+from src.llm_agg.utils import remove_ambiguous_sides
+from src.llm_agg.schemas.recommendations import Recommendations
+
 
 router = APIRouter()
 
@@ -308,7 +327,6 @@ def create_surveys(
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
-    created = []
     for uid in payload.evaluator_user_ids:
         s = Survey(review_id=review_id, evaluator_user_id=uid, status=SurveyStatus.not_started)
         db.add(s)
@@ -317,3 +335,134 @@ def create_surveys(
         s.survey_link = f"/form/{s.survey_id}?t={t}"
         db.commit()
     return {'task': 'ok'}
+
+@router.get("/api/surveys/{review_id}")
+async def llm_aggregation(
+    review_id: str, 
+    db: Session = Depends(get_db)
+):
+    # Fetch surveys with the given review_id
+    survey_ids = db.scalars(
+        select(Survey.survey_id)
+        .where(Survey.review_id == review_id)
+    ).all()
+
+    # Map survey_id -> evaluator_user_id for fast access
+    surveys = db.execute(
+        select(Survey.survey_id, Survey.evaluator_user_id)
+        .where(Survey.survey_id.in_(survey_ids))
+    ).all()
+    survey_id_to_evaluator = {s_id: eval_uid for s_id, eval_uid in surveys}
+
+    # Get review to compare subject_user_id for self-evaluation
+    review = db.get(Review, review_id)
+
+    answers = db.scalars(
+        select(Answer)
+        .where(Answer.survey_id.in_(survey_ids))
+    ).all()
+
+    grouped_text_answers = {}
+    numeric_answer = {"Самооценка": {}}
+    for answer in answers:
+        if answer.survey_id not in grouped_text_answers:
+            grouped_text_answers[answer.survey_id] = {"response_texts": [], "option_texts": []}
+
+        if answer.response_text:
+            question = db.get(Question, answer.question_id)
+            question_text = question.question_text if question else "Unknown Question"
+            numeric_answer[question_text] = []
+
+            def _is_number(value: str) -> bool:
+                try:
+                    float(value)
+                    return True
+                except (TypeError, ValueError):
+                    return False
+
+            if _is_number(answer.response_text):
+                evaluator_user_id = survey_id_to_evaluator.get(answer.survey_id)
+                if evaluator_user_id == review.subject_user_id:
+                    numeric_answer["Самооценка"][question_text] = float(answer.response_text)
+                else:
+                    numeric_answer[question_text].append(float(answer.response_text)) 
+            else:
+                grouped_text_answers[answer.survey_id]["response_texts"].append([
+                    question_text, answer.response_text
+                ])
+        else:
+            # Fetch option_texts for answers with empty response_text
+            option_texts = db.scalars(
+                select(QuestionOption.option_text, Question.question_text)
+                .join(AnswerSelection, AnswerSelection.option_id == QuestionOption.option_id)
+                .join(Question, QuestionOption.question_id == Question.question_id)
+                .where(AnswerSelection.answer_id == answer.answer_id)
+            ).all()
+
+            for option_text, question_text in option_texts:
+                if _is_number(option_text):
+                    evaluator_user_id = survey_id_to_evaluator.get(answer.survey_id)
+                    if evaluator_user_id == review.subject_user_id:
+                        numeric_answer["Самооценка"][question_text] = float(option_text)
+                    else:
+                        numeric_answer[question_text].append(float(option_text)) 
+                else:
+                    grouped_text_answers[answer.survey_id]["option_texts"].append([
+                        question_text, option_text
+                    ])
+    
+    for k, v in list(numeric_answer.items()):
+        if k == "Самооценка":
+            continue
+        if isinstance(v, list):
+            if len(v) > 0:
+                numeric_answer[k] = sum(v) / len(v)
+            else:
+                numeric_answer[k] = None
+
+    feedback = ''
+
+    for i, (u, v) in enumerate(grouped_text_answers.items()):
+        feedback += f"Фидбек № {i+1}: \n"
+        feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['response_texts']])
+        feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['option_texts']])
+        feedback += "\n"
+
+    log = [
+        {"role": "system", "content": BASE_PROMPT_WO_TASK},
+        {"role": "user", "content": SIDES_EXTRACTING_PROMPT.format(feedback=feedback)}
+    ]
+
+    completion = get_so_completion(
+        log=log, 
+        model_name=settings.MODEL_NAME, 
+        client=settings.OPENAI_CLIENT, 
+        pydantic_model=Sides, 
+        provider_name='openrouter'
+    )
+
+    new_msg = {
+        "role":"assistant",
+        "content": remove_ambiguous_sides(completion)
+    }
+    log.append(new_msg)
+    
+    new_user_msg = {
+        "role": "user",
+        "content": RECOMMENDATIONS_PROMPT
+    }
+    log.append(new_user_msg)
+
+    rec = get_so_completion(
+        log, 
+        model_name=settings.MODEL_NAME, 
+        client=settings.OPENAI_CLIENT, 
+        pydantic_model=Recommendations, 
+        provider_name='openrouter'
+    )
+    
+    return {
+        "sides": json.loads(completion),
+        "recommendations": json.loads(rec),
+        "numeric_answer": numeric_answer
+    }

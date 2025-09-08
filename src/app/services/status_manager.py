@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from src.app.core.config import settings
 from src.db.session import LocalSession
-from src.db.models import Review, Survey, User, ReviewStatus, SurveyStatus
+from src.db.models import Review, Survey, ReviewStatus, SurveyStatus
 from src.app.services.telegram_bot import get_telegram_bot_service
 
 logger = logging.getLogger(__name__)
