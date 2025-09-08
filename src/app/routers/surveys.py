@@ -150,6 +150,8 @@ async def save_answers(
     if final:
         survey.status = SurveyStatus.completed
         survey.submitted_at = utcnow()
+        # Отключаем дальнейшие напоминания
+        survey.notification_call = None
     else:
         if survey.status == SurveyStatus.not_started:
             survey.status = SurveyStatus.in_progress

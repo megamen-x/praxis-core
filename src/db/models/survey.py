@@ -23,6 +23,7 @@ class Survey(Base):
     status: Mapped[SurveyStatus] = mapped_column(Enum(SurveyStatus), default=SurveyStatus.not_started, nullable=False)
     is_declined: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     declined_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notification_call: Mapped["DateTime | None"] = mapped_column(DateTime(timezone=True), nullable=True)
     next_reminder_at: Mapped["DateTime | None"] = mapped_column(DateTime(timezone=True), nullable=True)
     submitted_at: Mapped["DateTime | None"] = mapped_column(DateTime(timezone=True), nullable=True)
     survey_link: Mapped[str] = mapped_column(String, nullable=True)

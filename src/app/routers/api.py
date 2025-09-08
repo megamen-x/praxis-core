@@ -258,6 +258,7 @@ async def get_user_surveys(user_id: str, db: Session = Depends(get_db)):
             status=survey.status.value,
             is_declined=survey.is_declined,
             declined_reason=survey.declined_reason,
+            notification_call=survey.notification_call,
             next_reminder_at=survey.next_reminder_at,
             submitted_at=survey.submitted_at,
             respondent_key=survey.respondent_key,
@@ -333,6 +334,11 @@ def create_surveys(
         db.commit()
         t = sign_token({"role": "respondent", "sub": s.survey_id}, ttl_sec=settings.RESPONDENT_LINK_TTL)
         s.survey_link = f"/form/{s.survey_id}?t={t}"
+        # Инициализация notification_call: середина интервала [start_at, end_at]
+        if review.start_at and review.end_at:
+            s.notification_call = review.start_at + (review.end_at - review.start_at) / 2
+        else:
+            s.notification_call = None
         db.commit()
     return {'task': 'ok'}
 

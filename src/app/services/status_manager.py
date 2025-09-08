@@ -155,6 +155,65 @@ async def _process_end_reviews(db: Session, now: datetime) -> int:
     return len(reviews)
 
 
+async def _process_survey_reminders(db: Session, now: datetime) -> int:
+    """
+    Отправляет напоминания по опросам, у которых наступил `notification_call`.
+    После отправки переносит `notification_call` в середину между текущим `notification_call` и `review.end_at`.
+    Последнее изменение выполняется, если до `review.end_at` остается 1 день или меньше — устанавливает `notification_call` на `review.end_at`.
+    Не шлёт напоминания, если опрос завершён/отклонён/просрочен.
+    """
+    start, end = _minute_window(now)
+
+    q = (
+        select(Survey)
+        .options(selectinload(Survey.review), selectinload(Survey.evaluator))
+        .where(
+            and_(
+                Survey.status.in_([SurveyStatus.not_started, SurveyStatus.in_progress]),
+                Survey.notification_call.isnot(None),
+                Survey.notification_call >= start,
+                Survey.notification_call < end,
+            )
+        )
+    )
+    surveys = db.execute(q).scalars().all()
+    if not surveys:
+        return 0
+
+    messages: list[tuple[int, str, str]] = []
+
+    for survey in surveys:
+        review = survey.review
+        evaluator = survey.evaluator
+        if not review or not evaluator:
+            continue
+        if review.status != ReviewStatus.in_progress:
+            continue
+        if not evaluator.telegram_chat_id:
+            continue
+
+        link = survey.survey_link or review.review_link or ""
+        text = f"🔔 Напоминание: пройдите опрос по ревью «{review.title}»"
+        messages.append((evaluator.telegram_chat_id, text, link))
+
+        if review.end_at:
+            if review.end_at - now <= timedelta(days=1):
+                survey.notification_call = None
+            else:
+                if survey.notification_call:
+                    midpoint = survey.notification_call + (review.end_at - survey.notification_call) / 2
+                    survey.notification_call = midpoint
+        else:
+            survey.notification_call = None
+
+    db.commit()
+
+    await _send_many(messages)
+
+    logger.info("Sent %d survey reminder(s) at %s", len(messages), start.isoformat())
+    return len(messages)
+
+
 async def process_tick(now: Optional[datetime] = None) -> dict:
     """
     Один «тик» планировщика: обработать старт/завершение ревью, разослать уведомления.
@@ -165,11 +224,13 @@ async def process_tick(now: Optional[datetime] = None) -> dict:
 
     with LocalSession() as db:
         started = await _process_start_reviews(db, now)
+        reminders = await _process_survey_reminders(db, now)
         completed = await _process_end_reviews(db, now)
 
         return {
             "reviews_started": started,
             "reviews_completed": completed,
+            "survey_reminders": reminders,
             "timestamp": now.isoformat(),
         }
 

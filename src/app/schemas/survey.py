@@ -21,6 +21,7 @@ class SurveyWithUserOut(BaseModel):
     status: str
     is_declined: bool
     declined_reason: str | None = None
+    notification_call: datetime | None = None
     next_reminder_at: datetime | None = None
     submitted_at: datetime | None = None
     respondent_key: str | None = None
