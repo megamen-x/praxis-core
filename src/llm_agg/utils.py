@@ -1,3 +1,11 @@
+import math
+import builtins
+import numpy as np
+from typing import Callable, Any
+from pydantic import BaseModel
+from decimal import Decimal
+
+
 def get_provider(base_url: str):
     if 'openrouter' in base_url:
         return 'openrouter'
@@ -12,11 +20,31 @@ def get_provider(base_url: str):
     
 
 def composite_review(reviews: list[str]):
-    template = "Review №{i}"
+    composite = ""
+    template = "Review №{number}"
 
     for i, review in enumerate(reviews):
-        continue
+        composite += template.format(number=i+1)
+        composite += review
+        composite += "\n"
+    return composite
 
-def agregate():
-    # для применения мат операций, которые будут задаваться как угодно, к полям ответов ревьюеров
-    pass
+
+def aggregate(schema: BaseModel, functions: Callable[[float], Any] | str) -> dict[str, Any]:
+    data = schema.model_dump() if hasattr(schema, "model_dump") else schema.dict()
+    if callable(functions):
+        func = functions
+    elif isinstance(functions, str):
+        func = getattr(np, functions, None) or getattr(math, functions, None) or getattr(builtins, functions, None)
+        if not callable(func):
+            raise ValueError(f"function '{functions}' not found or not callable")
+    else:
+        raise TypeError("functions must be a callable or a function name (str)")
+    
+    out= {}
+    for k, v in data.items():
+        if isinstance(v, bool):
+            continue
+        if isinstance(v, (int, float, Decimal, np.integer, np.floating)):
+            out[k] = func(v)
+    return out
