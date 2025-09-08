@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     APP_NAME: str = "Proxis Core"
+    BASE_URL: str = "https://openrouter.ai/api/v1"
     DEBUG: bool = True
     NOTIFICATION_TIMER: int = 60
     SECRET_KEY: str = "change-me-in-env"

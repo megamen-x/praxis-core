@@ -13,9 +13,21 @@ from src.db.models import Survey, Review, Question, Answer, SurveyStatus, Questi
 from src.app.schemas.answer import SaveAnswersIn
 from src.app.core.security import issue_csrf, verify_csrf
 from src.app.services.links import verify_token
+from src.app.core.prompts import prompt
+from src.llm_agg.schemas.sides import Side, Sides
+from src.llm_agg.prompts.base import BASE_PROMPT
 from sqlalchemy import delete as sa_delete, select
 from src.db.models.answer import AnswerSelection
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
+
+client = AsyncOpenAI(
+    base_url=settings.BASE_URL, 
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 router = APIRouter()
 templates = Jinja2Templates(directory=settings.JINJA2_TEMPLATES)
 
@@ -78,6 +90,57 @@ async def form_page(survey_id: str, request: Request, t: str = Query(...), db: S
     response.set_cookie("survey_csrf", csrf, samesite="lax")
     return response
 
+@router.get("/api/surveys/{review_id}")
+async def llm_aggregation(
+    review_id: str, 
+    db: Session = Depends(get_db)
+):
+    
+    surveys = db.scalars(
+        select(Survey)
+        .where(Survey.review_id == review_id)
+    ).all()
+    
+    survey_ids = [survey.survey_id for survey in surveys]
+    answers = db.scalars(
+        select(Answer)
+        .where(Answer.survey_id.in_(survey_ids))
+    ).all()
+    
+    response_texts = [answer.response_text for answer in answers if answer.response_text]
+    empty_response_answers = [answer.answer_id for answer in answers if not answer.response_text]
+
+    # Fetch options for answers with empty response_text
+    options_texts = db.scalars(
+        select(QuestionOption.option_text)
+        .join(AnswerSelection, AnswerSelection.option_id == QuestionOption.option_id)
+        .where(AnswerSelection.answer_id.in_(empty_response_answers))
+    ).all()
+
+    feedback = response_texts + options_texts
+    feedback_str = "\n".join([f"Review {i+1}. {text}" for i, text in enumerate(feedback)])
+    
+    log = [
+        {"role": "user", "content": BASE_PROMPT.format(task=prompt.format(feedback=feedback_str))}
+    ]
+    
+    completion = await client.chat.completions.create(
+        model='openai/gpt-4o',
+        messages=log,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": Sides.__name__,
+                "schema": Sides.model_json_schema()
+            }
+        },
+        temperature=0.0
+    )
+    
+    res = completion.choices[0].message.content
+    data_dict = json.loads(res)
+    
+    return data_dict
 
 @router.post("/api/surveys/{survey_id}/answers")
 async def save_answers(
