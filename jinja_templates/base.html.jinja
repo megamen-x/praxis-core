@@ -19,7 +19,7 @@
 
     html, body {
       font-family: 'Montserrat', Arial, sans-serif;
-      font-size: 14pt;
+      font-size: 10pt;
       color: #000;
       margin: 0;
       padding: 24px;
@@ -27,19 +27,19 @@
 
     /* Заголовки */
     h1 {
-      font-size: 18pt;
+      font-size: 14pt;
       font-weight: 700;
       text-align: center;
       margin: 0 0 18pt 0;
     }
     h2 {
-      font-size: 16pt;
+      font-size: 12pt;
       font-weight: 700;
       text-align: center;
       margin: 18pt 0 8pt 0;
     }
 
-    /* Параграфы (красная строка 1.25см) */
+    /* Абзацы */
     p {
       text-align: justify;
       text-indent: 1.25cm;
@@ -48,7 +48,7 @@
       font-style: normal;
     }
 
-    /* Общие правила для списков */
+    /* Единый стиль пунктов верхнего уровня */
     ul {
       list-style: none;
       padding-left: 0;
@@ -56,27 +56,40 @@
     }
     li {
       position: relative;
-      padding-left: 1.2em; /* место под маркер "–" */
+      padding-left: 1.2em;   /* место под маркер */
       text-align: justify;
       font-weight: 400;
       font-style: normal;
     }
     li::before {
-      content: "–";
+      content: "–";          /* маркер верхнего уровня — короткое тире */
       position: absolute;
       left: 0;
     }
-    .end-punct {
-      /* дополнительного форматирования не требуется; элемент-индикатор завершающей пунктуации */
-    }
 
-    /* Подсписки (для цитат и подпунктов) */
+    /* Подсписки.
+       Требование: уменьшить отступ на 1.25 см относительно предыдущей версии (т.е. сдвинуть влево).
+       Было margin-left: 1.25cm; стало 0. */
     ul.sublist {
-      margin-top: 4pt;
-      margin-bottom: 4pt;
+      margin: 6pt 0 6pt 0;   /* ключевая правка: теперь без дополнительного левого отступа */
+      padding-left: 0;
+    }
+    ul.sublist li {
+      padding-left: 1.2em;
+    }
+    ul.sublist li::before {
+      content: "✧";          /* маркер подпунктов — «искра» */
+      font-size: 1.05em;     /* немного больше текста */
+      position: absolute;
+      left: 0;
     }
 
-    /* Аккуратная пометка сноски у заголовка */
+    /* Отступ 1.25 см только для ГЛАВНЫХ пунктов выбранных разделов */
+    .root-indent {
+      margin-left: 1.25cm;
+    }
+
+    /* Метка сноски у заголовка */
     .fn-ref {
       font-weight: 400;
       font-size: 0.9em;
@@ -90,16 +103,27 @@
       text-decoration: none;
     }
 
-    /* Сноска внизу */
-    .footnote-sep {
-      border: none;
-      border-top: 1px solid #ccc;
-      margin: 18pt 0 8pt 0;
-    }
-    .footnote {
+    /* Сноска: рендерится в нижнем колонтитуле страницы "ambiguous" */
+    .footnote-running {
+      position: running(ambiguous-note);
+      font-size: 8pt;
       text-align: justify;
-      text-indent: 1.25cm; /* красная строка для сноски как для обычного абзаца */
-      margin: 0;
+      text-indent: 1.25cm;
+      padding-top: 6pt;
+      border-top: 0.5pt solid #000; /* тонкая чёрная линия на всю ширину */
+      width: 100%;
+    }
+
+    /* Раздел "Спорные качества" печатается на именованной странице */
+    .ambiguous-page { page: ambiguous; }
+
+    /* Настройки страницы со сноской внизу */
+    @page ambiguous {
+      margin: 24pt;
+      margin-bottom: 72pt;   /* резерв под нижний колонтитул со сноской */
+      @bottom-center {
+        content: element(ambiguous-note);
+      }
     }
 
     /* Картинка визуализации */
@@ -113,6 +137,19 @@
 </head>
 <body>
 
+  {# Макрос: гарантирует единственный нужный завершающий знак #}
+  {% macro ensure_ending(text, punctuation) -%}
+    {%- set t = (text|string).strip() -%}
+    {%- if t -%}
+      {%- set last = t[-1:] -%}
+      {%- if last in ['.', ',', ';', ':', '!', '?', '…'] -%}
+        {{- t[:-1] -}}{{ punctuation }}
+      {%- else -%}
+        {{- t -}}{{ punctuation }}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endmacro %}
+
   <!-- Заголовок 1 уровня -->
   <h1>Итоговый отчет по оценке {{ mark_name }} сотрудника {{ employee_name }}</h1>
 
@@ -124,23 +161,18 @@
       <li>
         {% if (quotes_layout | default('inline')) == 'inline' %}
           <span class="li-text">
-            {{ item.side_description }}{% if item.proofs and item.proofs|length > 0 %}:
-              {% for q in item.proofs %}
-                «{{ q }}»{% if not loop.last %}; {% endif %}
-              {% endfor %}
-            {% endif %}
+            {{ item.side_description }}{% if item.proofs and item.proofs|length > 0 %}:{% for q in item.proofs %} «{{ q }}»{% if not loop.last %};{% endif %}{% endfor %}{% endif -%}{{ ';' if not loop.last else '.' }}
           </span>
-          <span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span>
         {% else %}
           <span class="li-text">{{ item.side_description }}</span>
           {% if item.proofs and item.proofs|length > 0 %}
           <ul class="sublist">
             {% for q in item.proofs %}
-              <li><span class="li-text">«{{ q }}»</span><span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span></li>
+              <li><span class="li-text">«{{ q }}»{% if not loop.last %};{% else %}.{% endif %}</span></li>
             {% endfor %}
           </ul>
           {% endif %}
-          <span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span>
+          {# без завершающего знака у родительского пункта #}
         {% endif %}
       </li>
     {% endfor %}
@@ -155,51 +187,57 @@
       <li>
         {% if (quotes_layout | default('inline')) == 'inline' %}
           <span class="li-text">
-            {{ item.side_description }}{% if item.proofs and item.proofs|length > 0 %}:
-              {% for q in item.proofs %}
-                «{{ q }}»{% if not loop.last %}; {% endif %}
-              {% endfor %}
-            {% endif %}
+            {{ item.side_description }}{% if item.proofs and item.proofs|length > 0 %}:{% for q in item.proofs %} «{{ q }}»{% if not loop.last %};{% endif %}{% endfor %}{% endif -%}{{ ';' if not loop.last else '.' }}
           </span>
-          <span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span>
         {% else %}
           <span class="li-text">{{ item.side_description }}</span>
           {% if item.proofs and item.proofs|length > 0 %}
           <ul class="sublist">
             {% for q in item.proofs %}
-              <li><span class="li-text">«{{ q }}»</span><span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span></li>
+              <li><span class="li-text">«{{ q }}»{% if not loop.last %};{% else %}.{% endif %}</span></li>
             {% endfor %}
           </ul>
           {% endif %}
-          <span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span>
+          {# без завершающего знака у родительского пункта #}
         {% endif %}
       </li>
     {% endfor %}
   </ul>
   {% endif %}
 
-  <!-- Спорные качества (+сноска) -->
-  <h2>Спорные качества<span class="fn-ref"><a href="#fn-ambiguous" title="См. сноску">¹</a></span>:</h2>
-  {% if ambiguous_sides %}
-  <ul>
-    {% for item in ambiguous_sides %}
-      <li><span class="li-text">{{ item.side_description }}</span><span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span></li>
-    {% endfor %}
-  </ul>
-  {% endif %}
+  <!-- Спорные качества (сноска внизу ЭТОЙ страницы) -->
+  <section class="ambiguous-page">
+    <h2>Спорные качества<span class="fn-ref"><a href="#fn-ambiguous" title="См. сноску">¹</a></span>:</h2>
+
+    {# running‑элемент: попадёт в нижний колонтитул страницы ambiguous #}
+    <div id="fn-ambiguous" class="footnote-running">
+      <p>
+        Спорными качествами обозначаются те характеристики, которые были отмечены некоторыми респондентами
+        как сильные качества, а несколькими — как точки роста.
+      </p>
+    </div>
+
+    {% if ambiguous_sides %}
+    <ul class="root-indent">
+      {% for item in ambiguous_sides %}
+        <li><span class="li-text">{{ item.side_description }}{{ ';' if not loop.last else '.' }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
 
   <!-- Рекомендации по работе -->
   <h2>Рекомендации по работе:</h2>
   {% if recommendations %}
-  <ul>
+  <ul class="root-indent">
     {% for rec in recommendations %}
       <li>
         <span class="li-text">{{ rec.side_description }}</span>
         <ul class="sublist">
-          <li><span class="li-text">Краткое описание: {{ rec.brief_explanation }}</span><span class="end-punct">;</span></li>
-          <li><span class="li-text">Советы по улучшению: {{ rec.recommendation }}</span><span class="end-punct">.</span></li>
+          <li><span class="li-text">Краткое описание: {{ ensure_ending(rec.brief_explanation, ';') }}</span></li>
+          <li><span class="li-text">Советы по улучшению: {{ ensure_ending(rec.recommendation, '.') }}</span></li>
         </ul>
-        <span class="end-punct">{% if not loop.last %};{% else %}.{% endif %}</span>
+        {# у родительского пункта не ставим завершающий знак #}
       </li>
     {% endfor %}
   </ul>
@@ -210,12 +248,6 @@
   <div class="viz">
     <img src="{{ visualization_url }}" alt="Визуализация оценки {{ mark_name }}">
   </div>
-
-  <!-- Сноска внизу страницы -->
-  <hr class="footnote-sep">
-  <p id="fn-ambiguous" class="footnote">
-    Спорными качествами обозначаются те характеристики, которые были отмечены некоторыми респондентами как сильные качества, а несколькими — как точки роста.
-  </p>
 
 </body>
 </html>

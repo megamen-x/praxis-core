@@ -6,7 +6,6 @@ from src.llm_agg.response import (
 from src.llm_agg.utils import (
     remove_ambiguous_sides,
     get_provider,
-    get_client
 )
 from src.llm_agg.schemas.sides import Sides
 from src.llm_agg.schemas.recommendations import Recommendations
@@ -15,6 +14,7 @@ from src.llm_agg.prompts.eval import RECOMMENDATIONS_PROMPT as REC_PROMPT
 
 
 def user_feedback_agg(
+    client,
     model_name: str,
     composite_review: str,
     SIDES_EXTRACTING_PROMPT: str,
@@ -22,8 +22,6 @@ def user_feedback_agg(
     RECOMMENDATIONS_PROMPT: str | None = REC_PROMPT,
     SYSTEM_PROMPT: str | None = BASE_PROMPT_WO_TASK
 ) -> tuple:
-    client = get_client()
-
     if provider is None:
         provider = get_provider(os.getenv("OPENAI_BASE_URL"))
 
