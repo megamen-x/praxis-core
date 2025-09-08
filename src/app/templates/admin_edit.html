@@ -21,22 +21,41 @@
     </div>
     <div class="col-md-4">
       <label class="form-label mono">Старт</label>
-      <input id="start_at" class="form-control brutal-input" type="datetime-local" value="{{ (review.start_at or '')|replace(' ', 'T') }}">
+      <input id="start_at" class="form-control brutal-input" type="datetime-local" value="{{ ((review.start_at or '')|replace(' ', 'T'))[:16] }}">
     </div>
     <div class="col-md-4">
       <label class="form-label mono">Дедлайн</label>
-      <input id="end_at" class="form-control brutal-input" type="datetime-local" value="{{ (review.end_at or '')|replace(' ', 'T') }}">
+      <input id="end_at" class="form-control brutal-input" type="datetime-local" value="{{ ((review.end_at or '')|replace(' ', 'T'))[:16] }}">
     </div>
   </div>
   <div class="col-md-12">
     <div class="mt-3">
-      <button id="btn-save-review" class="btn btn-brutal">Сохранить</button>
+      <button id="btn-save-review" class="btn btn-brutal">Сохранить форму</button>
       <button id="btn-delete-review" class="btn btn-danger">Удалить</button>
     </div>
   </div>
 </div>
 
 <h3 class="mono">Вопросы</h3>
+
+<div class="q-block">
+  <h5 class="mono">Добавить вопросы из шаблона</h5>
+  <div class="row g-2">
+    <div class="col-md-6">
+      <select id="block-select" class="form-select brutal-input">
+        <option value="">— выберите шаблон —</option>
+      </select>
+    </div>
+    <div class="col-md-6 d-flex gap-2">
+      <button id="btn-load-blocks" class="btn btn-secondary" type="button">Обновить список</button>
+      <button id="btn-add-block" class="btn btn-brutal" type="button">Добавить блок</button>
+      <button id="btn-open-create-block" class="btn btn-outline-secondary" type="button">Создать свой блок</button>
+    </div>
+  </div>
+  <div id="block-info" class="small mt-2 text-muted"></div>
+</div>
+
+
 <div id="questions">
   {% for q in questions %}
   <div class="q-block" data-id="{{ q.question_id }}" data-meta='{{ q.meta|tojson }}'>
@@ -82,27 +101,10 @@
 </div>
 
 <div class="q-block">
-  <h5 class="mono">Добавить вопрос</h5>
+  <h5 class="mono">Добавить свои вопросы</h5>
   <div id="new-questions"></div>
   <button id="btn-add-q" class="btn btn-secondary">Новый вопрос</button>
   <button id="btn-create" class="btn btn-brutal">Сохранить вопросы</button>
-</div>
-
-<div class="q-block">
-  <h5 class="mono">Добавить из блока</h5>
-  <div class="row g-2">
-    <div class="col-md-6">
-      <select id="block-select" class="form-select brutal-input">
-        <option value="">— выберите блок —</option>
-      </select>
-    </div>
-    <div class="col-md-6 d-flex gap-2">
-      <button id="btn-load-blocks" class="btn btn-secondary" type="button">Обновить список</button>
-      <button id="btn-add-block" class="btn btn-brutal" type="button">Добавить блок</button>
-      <button id="btn-open-create-block" class="btn btn-outline-secondary" type="button">Создать свой блок</button>
-    </div>
-  </div>
-  <div id="block-info" class="small mt-2 text-muted"></div>
 </div>
 {% endblock %}
 
@@ -422,19 +424,7 @@
   }
 
   document.querySelector('#btn-save-review').addEventListener('click', async () => {
-    const payload = {
-      title: document.querySelector('#title').value,
-      description: document.querySelector('#description').value,
-      anonymity: document.querySelector('#anonymity').value === 'true',
-      start_at: document.querySelector('#start_at').value || null,
-      end_at: document.querySelector('#end_at').value || null,
-    };
-    const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
-    if (!res.ok) {
-      alert('Ошибка сохранения');
-      return;
-    }
-    alert('Ревью успешно сохранено!');
+    await saveAll();
   });
 
   document.querySelector('#btn-delete-review').addEventListener('click', async () => {
@@ -484,12 +474,119 @@
     location.reload();
   });
 
+  // ===== Unified save and autosave logic =====
+  async function saveReviewMeta() {
+    const payload = {
+      title: document.querySelector('#title').value,
+      description: document.querySelector('#description').value,
+      anonymity: document.querySelector('#anonymity').value === 'true',
+      start_at: document.querySelector('#start_at').value || null,
+      end_at: document.querySelector('#end_at').value || null,
+    };
+    const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error('Ошибка сохранения формы');
+  }
+
+  async function saveExistingQuestions() {
+    const blocks = Array.from(document.querySelectorAll('#questions .q-block'));
+    for (const block of blocks) {
+      const id = block.dataset.id;
+      const opts = collectOptions(block);
+      const payload = {
+        question_text: block.querySelector('.q-text').value,
+        question_type: block.querySelector('.q-type').value,
+        is_required: block.querySelector('.q-req').checked,
+        position: parseInt(block.querySelector('.q-pos').value || '0'),
+      };
+      if (opts !== null) payload.options = opts;
+      const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, {
+        method:'PATCH', headers: headers(), body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('Ошибка сохранения вопроса');
+    }
+  }
+
+  async function createNewQuestionsIfAny() {
+    const items = collectNewItems();
+    if (!items.length) return;
+    const res = await fetch(`/api/reviews/${reviewId}/questions?t=${token}`, {
+      method:'POST', headers: headers(), body: JSON.stringify(items)
+    });
+    if (!res.ok) throw new Error('Ошибка создания вопросов');
+  }
+
+  async function saveAll() {
+    const saveBtn = document.querySelector('#btn-save-review');
+    const original = saveBtn.textContent;
+    try {
+      saveBtn.disabled = true; saveBtn.textContent = 'Сохранение...';
+      await saveReviewMeta();
+      await saveExistingQuestions();
+      await createNewQuestionsIfAny();
+      alert('Форма успешно сохранена!');
+      // reload only if there were new questions (positions/order might change)
+      if (document.querySelector('#new-questions .q-block')) location.reload();
+    } catch (e) {
+      alert(e.message || 'Ошибка сохранения');
+    } finally {
+      saveBtn.disabled = false; saveBtn.textContent = original;
+    }
+  }
+
+  // Autosave: review meta
+  let metaAutosaveTimer = null;
+  ['#title','#description','#anonymity','#start_at','#end_at'].forEach(sel => {
+    const el = document.querySelector(sel);
+    el?.addEventListener('input', () => {
+      clearTimeout(metaAutosaveTimer);
+      metaAutosaveTimer = setTimeout(() => {
+        saveReviewMeta().catch(()=>{});
+      }, 700);
+    });
+    el?.addEventListener('change', () => {
+      clearTimeout(metaAutosaveTimer);
+      metaAutosaveTimer = setTimeout(() => {
+        saveReviewMeta().catch(()=>{});
+      }, 200);
+    });
+  });
+
+  // Autosave: existing question blocks (debounced per block)
+  function attachBlockAutosave(block) {
+    let t = null;
+    const handler = () => {
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        try {
+          const id = block.dataset.id;
+          if (!id) return; // skip new blocks
+          const opts = collectOptions(block);
+          const payload = {
+            question_text: block.querySelector('.q-text').value,
+            question_type: block.querySelector('.q-type').value,
+            is_required: block.querySelector('.q-req').checked,
+            position: parseInt(block.querySelector('.q-pos').value || '0'),
+          };
+          if (opts !== null) payload.options = opts;
+          await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, {
+            method:'PATCH', headers: headers(), body: JSON.stringify(payload)
+          });
+        } catch(_) {}
+      }, 800);
+    };
+    block.querySelectorAll('input, textarea, select').forEach(el => {
+      el.addEventListener('input', handler);
+      el.addEventListener('change', handler);
+    });
+  }
+  document.querySelectorAll('#questions .q-block').forEach(attachBlockAutosave);
+
   // Blocks UI
   const blockSelect = document.getElementById('block-select');
   const blockInfo = document.getElementById('block-info');
 
   async function loadBlocks() {
-    blockSelect.innerHTML = '<option value="">— выберите блок —</option>';
+    blockSelect.innerHTML = '<option value="">— выберите шаблон —</option>';
     blockInfo.textContent = '';
     const res = await fetch(`/api/question-blocks?review_id=${reviewId}&t=${token}`);
     if (!res.ok) { blockInfo.textContent = 'Не удалось загрузить список блоков'; return; }
@@ -505,7 +602,7 @@
   document.getElementById('btn-load-blocks').addEventListener('click', loadBlocks);
   document.getElementById('btn-add-block').addEventListener('click', async () => {
     const blockId = blockSelect.value;
-    if (!blockId) { alert('Сначала выберите блок'); return; }
+    if (!blockId) { alert('Сначала выберите шаблон'); return; }
     const res = await fetch(`/api/reviews/${reviewId}/blocks/${blockId}?t=${token}`, {
       method:'POST', headers: headers(), body: JSON.stringify({})
     });
@@ -606,8 +703,11 @@
               <label class="form-check-label">Обязательный</label>
             </div>
           </div>
-          <div class="col-md-3 d-flex align-items-end">
+          <div class="col-md-3">
+            <label class="form-label-sec mono"> </label>
+            <div style="padding-top: 10px;">
             <button type="button" class="btn btn-outline-danger cb-del-q">Удалить вопрос</button>
+            </div>
           </div>
         </div>
       </div>

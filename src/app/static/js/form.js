@@ -49,14 +49,11 @@ function collectPayload() {
 }
 
 /**
- * Отправляет ответы на сервер. Логика почти не изменилась.
- * @param {boolean} finalize - Если true, отправляет как финальный ответ.
+ * @param {boolean} finalize
  */
 async function postAnswers(finalize = false) {
-  // Вызываем обновленную функцию collectPayload
   const answersData = collectPayload();
   
-  // Собираем финальный payload для API
   const payload = { 
     answers: answersData, 
     csrf_token: decodeURIComponent(window.__CSRF__ || '') 
@@ -71,12 +68,11 @@ async function postAnswers(finalize = false) {
     });
 
     if (!res.ok) {
-      // Попробуем получить текст ошибки с сервера
       const errorData = await res.json().catch(() => ({ detail: 'Ошибка сохранения' }));
       console.error('Save error:', errorData);
       alert(errorData.detail || 'Ошибка сохранения');
     } else if (finalize) {
-      window.location.href = form.dataset.done;
+      showThanksModal();
     }
   } catch (error) {
     console.error('Network error:', error);
@@ -84,12 +80,9 @@ async function postAnswers(finalize = false) {
   }
 }
 
-// --- Обработчики событий остались без изменений ---
-
 saveBtn?.addEventListener('click', (e) => { 
   e.preventDefault(); 
   postAnswers(false); 
-  // Можно добавить визуальный фидбек для пользователя
   const originalText = e.target.textContent;
   e.target.textContent = 'Сохранено!';
   setTimeout(() => { e.target.textContent = originalText; }, 1500);
@@ -97,7 +90,6 @@ saveBtn?.addEventListener('click', (e) => {
 
 submitBtn?.addEventListener('click', (e) => { 
   e.preventDefault(); 
-  // Простая проверка на заполнение обязательных полей перед отправкой
   if (form.checkValidity()) {
     postAnswers(true);
   } else {
@@ -106,17 +98,43 @@ submitBtn?.addEventListener('click', (e) => {
   }
 });
 
-// Логика автосохранения
 let autoSaveTimeout;
 form.addEventListener('input', () => {
   clearTimeout(autoSaveTimeout);
-  autoSaveTimeout = setTimeout(() => postAnswers(false), 1200); // Немного увеличил задержку
+  autoSaveTimeout = setTimeout(() => postAnswers(false), 600);
 });
 
-// UI для range-слайдера (без изменений)
 document.querySelectorAll('input[type=range]').forEach(r => {
   const out = r.parentElement.querySelector('.scale-value');
   const set = () => out && (out.textContent = r.value);
   r.addEventListener('input', set);
   set();
 });
+
+function showThanksModal() {
+  let modal = document.getElementById('thanks-modal');
+  if (!modal) {
+    const div = document.createElement('div');
+    div.id = 'thanks-modal';
+    div.style.position = 'fixed';
+    div.style.inset = '0';
+    div.style.background = 'rgba(0,0,0,0.5)';
+    div.style.display = 'flex';
+    div.style.alignItems = 'center';
+    div.style.justifyContent = 'center';
+    div.style.zIndex = '1050';
+    div.innerHTML = `
+      <div style="padding:24px;border-radius:8px;max-width:480px;width:90%;text-align:center">
+        <h3 class="mono mb-2">Спасибо!</h3>
+        <p>Ваши ответы записаны.</p>
+        <div class="mt-3 d-flex gap-2 justify-content-center">
+          <button id="thanks-close" class="btn btn-brutal">Чики-бамбони</button>
+        </div>
+      </div>`;
+    document.body.appendChild(div);
+    div.addEventListener('click', (e) => { if (e.target === div) div.remove(); });
+    div.querySelector('#thanks-close').addEventListener('click', () => div.remove());
+    modal = div;
+  }
+  modal.style.display = 'flex';
+}

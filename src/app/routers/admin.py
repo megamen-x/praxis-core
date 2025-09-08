@@ -162,8 +162,18 @@ async def create_review_questions(review_id: str, items: list[QuestionCreate], r
                     position=opt.position if opt.position is not None else i,
                 ))
         elif qtype == QuestionType.range_slider:
-            # it.options is RangeMeta dict
-            q.meta_json = json.dumps(it.options or {"min": 1, "max": 10, "step": 1})
+            # it.options may be RangeMeta (pydantic) or dict
+            rng = it.options or {"min": 1, "max": 10, "step": 1}
+            try:
+                if hasattr(rng, "model_dump"):
+                    rng = rng.model_dump()
+                q.meta_json = json.dumps({
+                    "min": int(rng.get("min", 1)),
+                    "max": int(rng.get("max", 10)),
+                    "step": int(rng.get("step", 1)),
+                })
+            except Exception:
+                q.meta_json = json.dumps({"min": 1, "max": 10, "step": 1})
         else:
             q.meta_json = None  # text/textarea
 
@@ -230,8 +240,18 @@ async def update_question(question_id: str, patch: QuestionUpdate, request: Requ
                     position=opt.position if getattr(opt, "position", None) is not None else i
                 ))
         elif question.question_type == QuestionType.range_slider:
-            # patch.options is RangeMeta dict
-            question.meta_json = json.dumps(patch.options)
+            # patch.options may be RangeMeta (pydantic) or dict
+            rng = patch.options or {"min": 1, "max": 10, "step": 1}
+            try:
+                if hasattr(rng, "model_dump"):
+                    rng = rng.model_dump()
+                question.meta_json = json.dumps({
+                    "min": int(rng.get("min", 1)),
+                    "max": int(rng.get("max", 10)),
+                    "step": int(rng.get("step", 1)),
+                })
+            except Exception:
+                question.meta_json = json.dumps({"min": 1, "max": 10, "step": 1})
 
     db.commit()
     return {"ok": True}
