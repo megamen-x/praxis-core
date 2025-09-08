@@ -11,7 +11,6 @@ class ReviewStatus(str, enum.Enum):
     draft = "draft"
     in_progress = "in_progress"
     completed = "completed"
-    archived = "archived"
 
 class Review(Base):
     __tablename__ = "reviews"

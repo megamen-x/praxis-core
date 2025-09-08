@@ -1,205 +1,196 @@
-# app/services/status_manager.py
+# src/app/services/status_manager.py
+import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import List, Tuple
-from sqlalchemy.orm import Session
-from sqlalchemy import select, update, and_
-from src.db.models import Review, Survey, ReviewStatus, SurveyStatus
-from src.app.services.notification import get_notification_service
+from typing import Optional, Tuple
+
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy import and_, select
+from sqlalchemy.orm import Session, selectinload
+
+from src.app.core.config import settings
+from src.db.session import LocalSession
+from src.db.models import Review, Survey, User, ReviewStatus, SurveyStatus
+from src.app.services.telegram_bot import get_telegram_bot_service
 
 logger = logging.getLogger(__name__)
 
 
-class StatusManager:
-    """Сервис для автоматического управления статусами Review и Survey"""
-    
-    def __init__(self, db: Session):
-        self.db = db
-        self.notification_service = get_notification_service()
-    
-    async def update_review_statuses(self) -> Tuple[int, int, int]:
-        """
-        Обновляет статусы всех Review на основе времени
-        
-        Returns:
-            Tuple[int, int, int]: (started_count, completed_count, archived_count)
-        """
-        current_time = datetime.now(timezone.utc)
-        one_year_ago = current_time - timedelta(days=365)
-        
-        started_count = 0
-        completed_count = 0
-        archived_count = 0
-        
-        # 1. Начинаем ревью (draft -> in_progress)
-        started_reviews = await self._start_reviews(current_time)
-        started_count = len(started_reviews)
-        
-        # 2. Завершаем ревью (in_progress -> completed)
-        completed_reviews = await self._complete_reviews(current_time)
-        completed_count = len(completed_reviews)
-        
-        # 3. Архивируем старые ревью (completed -> archived)
-        archived_reviews = await self._archive_reviews(one_year_ago)
-        archived_count = len(archived_reviews)
-        
-        return started_count, completed_count, archived_count
-    
-    async def update_survey_statuses(self) -> int:
-        """
-        Обновляет статусы Survey на основе статуса Review
-        
-        Returns:
-            int: количество обновленных опросов
-        """
-        updated_count = 0
-        
-        # Получаем все активные опросы
-        active_surveys = self.db.execute(
-            select(Survey, Review)
-            .join(Review, Survey.review_id == Review.review_id)
-            .where(
-                and_(
-                    Survey.status.in_([SurveyStatus.not_started, SurveyStatus.in_progress]),
-                    Review.status == ReviewStatus.in_progress
-                )
+def _minute_window(now: datetime) -> Tuple[datetime, datetime]:
+    start = now.replace(second=0, microsecond=0)
+    end = start + timedelta(minutes=1)
+    return start, end
+
+
+async def _send_many(messages: list[tuple[int, str, str]]) -> None:
+    if not messages:
+        return
+
+    bot_service = get_telegram_bot_service()
+    if not bot_service:
+        logger.warning("Telegram bot service is not available. %d message(s) skipped.", len(messages))
+        return
+
+    for chat_id, text, url in messages:
+        try:
+            kb = InlineKeyboardBuilder()
+            site_url = 'http://'+ settings.HOST + ':' + settings.PORT
+            kb.button(text='Пройти опрос', url=site_url + url)
+            await bot_service.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=kb.as_markup()
             )
-        ).all()
-        
-        for survey, review in active_surveys:
-            # Если ревью началось, но опрос еще не начат - переводим в in_progress
+            await bot_service.bot.send_message(chat_id=chat_id, text=text)
+        except Exception as e:
+            logger.error("Failed to send message to %s: %s", chat_id, e)
+
+
+async def _process_start_reviews(db: Session, now: datetime) -> int:
+    """
+    Переводит ревью со статусом draft в in_progress, если start_at совпадает по минуте.
+    Рассылает ссылки на прохождение Survey их участникам.
+    """
+    start, end = _minute_window(now)
+
+    q = (
+        select(Review)
+        .options(selectinload(Review.surveys).selectinload(Survey.evaluator))
+        .where(
+            and_(
+                Review.status == ReviewStatus.draft,
+                Review.start_at.isnot(None),
+                Review.start_at >= start,
+                Review.start_at < end,
+            )
+        )
+    )
+    reviews = db.execute(q).scalars().all()
+    if not reviews:
+        return 0
+
+    messages: list[tuple[int, str, str]] = []
+
+    for review in reviews:
+        review.status = ReviewStatus.in_progress
+
+        for survey in review.surveys:
+            # Переводим опросы в in_progress, если еще не начаты
             if survey.status == SurveyStatus.not_started:
                 survey.status = SurveyStatus.in_progress
-                updated_count += 1
-                logger.info(f"Survey {survey.survey_id} переведен в статус in_progress")
-        
-        # Получаем все опросы, где ревью завершено
-        completed_reviews = self.db.execute(
-            select(Review)
-            .where(Review.status == ReviewStatus.completed)
-        ).scalars().all()
-        
-        for review in completed_reviews:
-            # Находим все не завершенные опросы для этого ревью
-            incomplete_surveys = self.db.execute(
-                select(Survey)
-                .where(
-                    and_(
-                        Survey.review_id == review.review_id,
-                        Survey.status.in_([SurveyStatus.not_started, SurveyStatus.in_progress])
-                    )
-                )
-            ).scalars().all()
-            
-            for survey in incomplete_surveys:
+
+            # Готовим отправку ссылок участникам
+            evaluator = survey.evaluator
+            if not evaluator:
+                continue
+
+            chat_id = evaluator.telegram_chat_id
+            if not chat_id:
+                logger.debug("No telegram chat_id for user %s (survey %s)", evaluator.user_id, survey.survey_id)
+                continue
+
+            link = survey.survey_link or review.review_link or ""
+            text = f"📝 Вам доступен опрос по ревью «{review.title}»"
+            messages.append((chat_id, text, link))
+
+    db.commit()
+
+    await _send_many(messages)
+
+    logger.info("Started %d review(s) at %s", len(reviews), start.isoformat())
+    return len(reviews)
+
+
+async def _process_end_reviews(db: Session, now: datetime) -> int:
+    """
+    Переводит ревью со статусом in_progress в completed, если end_at совпадает по минуте.
+    Помечает незавершенные опросы как expired и отправляет создателю Review уведомление «Отчет готов».
+    """
+    start, end = _minute_window(now)
+
+    q = (
+        select(Review)
+        .options(selectinload(Review.surveys), selectinload(Review.created_by))
+        .where(
+            and_(
+                Review.status == ReviewStatus.in_progress,
+                Review.end_at.isnot(None),
+                Review.end_at >= start,
+                Review.end_at < end,
+            )
+        )
+    )
+    reviews = db.execute(q).scalars().all()
+    if not reviews:
+        return 0
+
+    messages: list[tuple[int, str]] = []
+
+    for review in reviews:
+        review.status = ReviewStatus.completed
+
+        # Все незавершенные опросы помечаем как expired
+        for survey in review.surveys:
+            if survey.status in (SurveyStatus.not_started, SurveyStatus.in_progress):
                 survey.status = SurveyStatus.expired
-                updated_count += 1
-                logger.info(f"Survey {survey.survey_id} переведен в статус expired")
-        
-        self.db.commit()
-        return updated_count
-    
-    async def _start_reviews(self, current_time: datetime) -> List[Review]:
-        """Начинает ревью, время которых пришло"""
-        reviews_to_start = self.db.execute(
-            select(Review)
-            .where(
-                and_(
-                    Review.status == ReviewStatus.draft,
-                    Review.start_at.isnot(None),
-                    Review.start_at <= current_time
-                )
-            )
-        ).scalars().all()
-        
-        for review in reviews_to_start:
-            review.status = ReviewStatus.in_progress
-            logger.info(f"Review {review.review_id} переведен в статус in_progress")
-        
-        self.db.commit()
-        return reviews_to_start
-    
-    async def _complete_reviews(self, current_time: datetime) -> List[Review]:
-        """Завершает ревью, время которых истекло"""
-        reviews_to_complete = self.db.execute(
-            select(Review)
-            .where(
-                and_(
-                    Review.status == ReviewStatus.in_progress,
-                    Review.end_at.isnot(None),
-                    Review.end_at <= current_time
-                )
-            )
-        ).scalars().all()
-        
-        for review in reviews_to_complete:
-            review.status = ReviewStatus.completed
-            logger.info(f"Review {review.review_id} переведен в статус completed")
-            
-            # Отправляем уведомление о готовности отчета
-            try:
-                await self.notification_service.send_notification(
-                    user_id=review.created_by_user_id,
-                    message=f"📊 Отчет готов!\n\nРевью: {review.title}",
-                    db=self.db
-                )
-                logger.info(f"Уведомление отправлено для Review {review.review_id}")
-            except Exception as e:
-                logger.error(f"Ошибка отправки уведомления для Review {review.review_id}: {e}")
-        
-        self.db.commit()
-        return reviews_to_complete
-    
-    async def _archive_reviews(self, one_year_ago: datetime) -> List[Review]:
-        """Архивирует старые завершенные ревью"""
-        reviews_to_archive = self.db.execute(
-            select(Review)
-            .where(
-                and_(
-                    Review.status == ReviewStatus.completed,
-                    Review.end_at.isnot(None),
-                    Review.end_at <= one_year_ago
-                )
-            )
-        ).scalars().all()
-        
-        for review in reviews_to_archive:
-            review.status = ReviewStatus.archived
-            logger.info(f"Review {review.review_id} переведен в статус archived")
-        
-        self.db.commit()
-        return reviews_to_archive
-    
-    async def process_all_statuses(self) -> dict:
-        """
-        Обрабатывает все статусы Review и Survey
-        
-        Returns:
-            dict: статистика обновлений
-        """
+
+        # Сообщение создателю ревью
+        creator = review.created_by
+        if creator:
+            chat_id = creator.telegram_chat_id
+            if chat_id:
+                link = ""
+                text = f"📊 Отчет готов."
+                messages.append((chat_id, text, link))
+            else:
+                logger.debug("No telegram chat_id for creator %s (review %s)", creator.user_id, review.review_id)
+
+    db.commit()
+
+    await _send_many(messages)
+
+    logger.info("Completed %d review(s) at %s", len(reviews), start.isoformat())
+    return len(reviews)
+
+
+async def process_tick(now: Optional[datetime] = None) -> dict:
+    """
+    Один «тик» планировщика: обработать старт/завершение ревью, разослать уведомления.
+    Возвращает статистику по обновлениям.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    with LocalSession() as db:
+        started = await _process_start_reviews(db, now)
+        completed = await _process_end_reviews(db, now)
+
+        return {
+            "reviews_started": started,
+            "reviews_completed": completed,
+            "timestamp": now.isoformat(),
+        }
+
+
+async def run_status_manager_loop():
+    """
+    Фоновая задача: запускать process_tick каждую минуту (по границам минут).
+    """
+    logger.info("Status manager loop started")
+    # Небольшая задержка, чтобы дать боту подняться
+    await asyncio.sleep(0.5)
+
+    while True:
         try:
-            # Обновляем статусы ревью
-            started, completed, archived = await self.update_review_statuses()
-            
-            # Обновляем статусы опросов
-            surveys_updated = await self.update_survey_statuses()
-            
-            stats = {
-                "reviews_started": started,
-                "reviews_completed": completed,
-                "reviews_archived": archived,
-                "surveys_updated": surveys_updated,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-            
-            logger.info(f"Статусы обновлены: {stats}")
-            return stats
-            
+            now = datetime.now(timezone.utc)
+            stats = await process_tick(now)
+            if stats["reviews_started"] or stats["reviews_completed"]:
+                logger.info("StatusManager stats: %s", stats)
         except Exception as e:
-            logger.error(f"Ошибка при обновлении статусов: {e}")
-            raise
+            logger.exception("StatusManager tick failed: %s", e)
 
-
-def get_status_manager(db: Session) -> StatusManager:
-    """Получить экземпляр менеджера статусов"""
-    return StatusManager(db)
+        now2 = datetime.now(timezone.utc)
+        minute_start = now2.replace(second=0, microsecond=0)
+        next_minute = minute_start + timedelta(minutes=1)
+        sleep_s = (next_minute - now2).total_seconds()
+        await asyncio.sleep(max(0.5, sleep_s))

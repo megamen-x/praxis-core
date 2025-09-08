@@ -12,7 +12,7 @@ class UserOut(BaseModel):
     job_title: str | None = None
     department: str | None = None
     email: str | None = None
-    telegram_chat_id: str | None = None
+    telegram_chat_id: int | None = None
     can_create_review: bool
     created_at: datetime
 
@@ -24,7 +24,7 @@ class UserCreate(BaseModel):
     job_title: str | None = None
     department: str | None = None
     email: str | None = None
-    telegram_chat_id: str | None = None
+    telegram_chat_id: int | None = None
     can_create_review: bool = False
 
 
@@ -35,5 +35,5 @@ class UserUpdate(BaseModel):
     job_title: str | None = None
     department: str | None = None
     email: str | None = None
-    telegram_chat_id: str | None = None
+    telegram_chat_id: int | None = None
     can_create_review: bool | None = None
