@@ -1,4 +1,4 @@
-SIDES_EXTRACTING_PROMPT = """
+base_prompt = """
 You are working on a task of collecting feedback and evaluating employees.  
 Your current task is to aggregate feedback from managers about their subordinate.  
 Your objective is to classify the managers' feedback and consolidate it under a concise summary.  
@@ -8,8 +8,6 @@ Rules:
 - Each Review is a unique respondent; counting: strong_count = number of distinct reviews that label the quality as strong, weak_count = number of distinct reviews that label it as weak.
 - Do not duplicate the same quality under different polarities; if a quality has both strong and weak mentions, produce a single AmbiguousSide for it.
 - Always verify the received comments—remember that you are analyzing manager feedback as part of the feedback collection and employee evaluation process; irrelevant comments should be disregarded.  
-- For each item, always fill the proofs field. Use verbatim quotes/excerpts from the reviews.
-- If the same quality appears as both strong and weak, ALWAYS create a single AmbiguousSide (kind='ambiguous'), not two Side items.
 - Answer in Russian
 
 Now proceed with the task.  
@@ -18,8 +16,7 @@ Feedback from managers:
 {feedback}
 """
 
-# промпт для генерации рекомендаций по работе с точками роста
-RECOMMENDATIONS_PROMPT = """
+recommendation_prompt = """
 You are working on improving the qualities of your company’s employees.
 
 You are given:
@@ -47,16 +44,4 @@ Rules for weaknesses:
 - Propose the first concrete step the employee can take in the near term (e.g., in the next sprint/month).
 
 Now proceed with the task.
-"""
-
-# промпт оценки проверяющего на основании его ревью
-REVIEWER_PROMPT = """
-
-"""
-
-# рекомендации для HR и руководителя сотрудника на основании ОС
-USER_CLASSIFICATION_FOR_MANAGEMENT = """
-
-
-
 """
