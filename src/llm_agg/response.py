@@ -1,18 +1,18 @@
 from typing import Literal
-from openai import OpenAI
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 
-def get_so_completion(
+async def get_so_completion(
     log: list,
     model_name: str,
-    client: OpenAI,
+    client: AsyncOpenAI,
     pydantic_model: BaseModel,
     provider_name: Literal['openai', 'openrouter', 'local'],
 ):
     job = None
     if provider_name == 'openai':
-        completion = client.beta.chat.completions.parse(
+        completion = await client.beta.chat.completions.parse(
             model=model_name,
             response_format=pydantic_model,
             messages=log,
@@ -21,7 +21,7 @@ def get_so_completion(
         job = completion.choices[0].message.parsed
     elif provider_name == 'openrouter' or provider_name == "local":
         model_schema = pydantic_model.model_json_schema()
-        completion = client.chat.completions.create(
+        completion = await client.chat.completions.create(
             model=model_name,
             messages=log,
             response_format={
@@ -50,12 +50,12 @@ def get_so_completion(
 
 
 # да, это можно было смердижть с get_so_completion - мне пока лень
-def get_default_completion(
+async def get_default_completion(
     log: list,
     model_name: str,
-    client: OpenAI
+    client: AsyncOpenAI
 ):
-    completion = client.chat.completions.create(
+    completion = await client.chat.completions.create(
         model=model_name,
         messages=log,
     )

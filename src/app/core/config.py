@@ -1,13 +1,12 @@
 # app/core/config.py
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from openai import AsyncClient
+from openai import AsyncOpenAI
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
     
     OPENAI_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENAI_API_KEY: str = 'your_api_key'
-    OPENAI_CLIENT = AsyncClient(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY)
     MODEL_NAME: str = 'openai/gpt-4o'
 
     APP_NAME: str = "Proxis Core"
@@ -30,3 +29,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+OPENAI_CLIENT = AsyncOpenAI(base_url=settings.OPENAI_BASE_URL, api_key=settings.OPENAI_API_KEY)

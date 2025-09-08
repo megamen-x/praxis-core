@@ -23,7 +23,6 @@ app.include_router(surveys.router)
 app.include_router(api.router)
 
 @app.on_event("startup")
-
 async def on_startup():
     Base.metadata.create_all(bind=engine)
     

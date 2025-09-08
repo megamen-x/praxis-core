@@ -5,7 +5,7 @@ from sqlalchemy import select
 from typing import List
 import json
 
-from src.app.core.config import settings
+from src.app.core.config import settings, OPENAI_CLIENT
 from src.app.services.links import sign_token
 from src.db.session import get_db
 from src.db.models import (
@@ -442,7 +442,7 @@ async def llm_aggregation(
     completion = get_so_completion(
         log=log, 
         model_name=settings.MODEL_NAME, 
-        client=settings.OPENAI_CLIENT, 
+        client=OPENAI_CLIENT, 
         pydantic_model=Sides, 
         provider_name='openrouter'
     )
@@ -462,7 +462,7 @@ async def llm_aggregation(
     rec = get_so_completion(
         log, 
         model_name=settings.MODEL_NAME, 
-        client=settings.OPENAI_CLIENT, 
+        client=OPENAI_CLIENT, 
         pydantic_model=Recommendations, 
         provider_name='openrouter'
     )
