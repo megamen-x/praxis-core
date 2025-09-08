@@ -1,12 +1,13 @@
 from typing import Literal
 from openai import OpenAI
+from pydantic import BaseModel
 
 
 def get_so_completion(
     log: list,
     model_name: str,
     client: OpenAI,
-    pydantic_model,
+    pydantic_model: BaseModel,
     provider_name: Literal['openai', 'openrouter', 'local'],
 ):
     job = None
@@ -29,7 +30,8 @@ def get_so_completion(
                     "name": pydantic_model.__name__,
                     "schema": model_schema
                 }
-            }
+            },
+            temperature=0.0
         )
         job = completion.choices[0].message.content
     else:
