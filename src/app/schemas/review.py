@@ -22,6 +22,7 @@ class ReviewOut(BaseModel):
     status: str
     start_at: datetime | None = None
     end_at: datetime | None = None
+    review_link: str | None = None
 
 
 class UpdateReviewIn(BaseModel):

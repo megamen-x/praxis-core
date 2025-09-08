@@ -7,9 +7,9 @@ from fastapi.templating import Jinja2Templates
 from src.app.core.config import settings
 from src.db.session import engine, get_db
 from src.db import Base
-from src.app.routers import admin, surveys, tg, api
+from src.app.routers import admin, surveys, api, telegram
 from src.app.services.notification import check_review_notifications_task
-from src import tg_bot
+from src.app.services.telegram_bot import start_telegram_bot
 
 logger = logging.getLogger(__name__)
 
@@ -20,17 +20,18 @@ templates = Jinja2Templates(directory=settings.JINJA2_TEMPLATES)
 
 app.include_router(admin.router)
 app.include_router(surveys.router)
-app.include_router(tg.router)
+app.include_router(api.router)
+app.include_router(telegram.router)
 
 
 @app.on_event("startup")
 async def on_startup():
     Base.metadata.create_all(bind=engine)
     
-    # # Запускаем фоновую задачу для проверки уведомлений
-    # asyncio.create_task(notification_checker())
-    # # Запускаем Telegram-бота параллельно с приложением
-    # asyncio.create_task(tg_bot.main())
+    # Запускаем фоновую задачу для проверки уведомлений
+    asyncio.create_task(notification_checker())
+    # Запускаем Telegram-бота параллельно с приложением
+    asyncio.create_task(start_telegram_bot())
 
 
 async def notification_checker():
