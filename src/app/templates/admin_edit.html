@@ -1,0 +1,777 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mb-3 mono">Редактирование опроса</h1>
+
+<div class="q-block mb-3">
+  <div class="row g-2">
+    <div class="col-12">
+      <label class="form-label mono">Название</label>
+      <input id="title" class="form-control brutal-input" type="text" value="{{ review.title }}">
+    </div>
+    <div class="col-12">
+      <label class="form-label mono">Описание</label>
+      <textarea id="description" class="form-control brutal-input" rows="3">{{ review.description or '' }}</textarea>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label mono">Анонимность</label>
+      <select id="anonymity" class="form-select brutal-input">
+        <option value="true" {% if review.anonymity %}selected{% endif %}>Вкл</option>
+        <option value="false" {% if not review.anonymity %}selected{% endif %}>Выкл</option>
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label mono">Старт</label>
+      <input id="start_at" class="form-control brutal-input" type="datetime-local" value="{{ ((review.start_at or '')|replace(' ', 'T'))[:16] }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label mono">Дедлайн</label>
+      <input id="end_at" class="form-control brutal-input" type="datetime-local" value="{{ ((review.end_at or '')|replace(' ', 'T'))[:16] }}">
+    </div>
+  </div>
+  <div class="col-md-12">
+    <div class="mt-3">
+      <button id="btn-save-review" class="btn btn-brutal">Сохранить форму</button>
+      <button id="btn-delete-review" class="btn btn-danger">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<h3 class="mono">Вопросы</h3>
+
+<div class="q-block">
+  <h5 class="mono">Добавить вопросы из шаблона</h5>
+  <div class="row g-2">
+    <div class="col-md-6">
+      <select id="block-select" class="form-select brutal-input">
+        <option value="">— выберите шаблон —</option>
+      </select>
+    </div>
+    <div class="col-md-6 d-flex gap-2">
+      <button id="btn-load-blocks" class="btn btn-secondary" type="button">Обновить список</button>
+      <button id="btn-add-block" class="btn btn-brutal" type="button">Добавить блок</button>
+      <button id="btn-open-create-block" class="btn btn-outline-secondary" type="button">Создать свой блок</button>
+    </div>
+  </div>
+  <div id="block-info" class="small mt-2 text-muted"></div>
+</div>
+
+
+<div id="questions">
+  {% for q in questions %}
+  <div class="q-block" data-id="{{ q.question_id }}" data-meta='{{ q.meta|tojson }}'>
+    <div class="mb-2 question_label">Вопрос №{{ q.position }}</div>
+    <div class="container">
+      <label class="form-label ">Текст вопроса</label>
+      <input  class="form-control brutal-input mb-2 q-text" value="{{ q.question_text }}" rows="3">
+      <div class="row g-2 align-items-center">
+        <label class="form-label">Параметры вопроса</label>
+        <div style="display:flex; flex-direction: row; justify-content: center; align-items: center" class="row g-2">
+          <div class="col-md-3"> 
+              <label class="form-label-sec mono">Номер вопроса</label>
+              <input class="form-control brutal-input q-pos" type="number" value="{{ q.position }}" min="1">
+            </div>
+          <div class="col-md-3">
+            <label class="form-label-sec mono">Формат ответа</label>
+            <select class="form-select brutal-input q-type">
+              <option value="text" {% if q.question_type=='text' %}selected{% endif %}>Текст (строка)</option>
+              <option value="textarea" {% if q.question_type=='textarea' %}selected{% endif %}>Текст (абзац)</option>
+              <option value="radio" {% if q.question_type=='radio' %}selected{% endif %}>Один из списка</option>
+              <option value="checkbox" {% if q.question_type=='checkbox' %}selected{% endif %}>Несколько из списка</option>
+              <option value="range_slider" {% if q.question_type=='range_slider' %}selected{% endif %}>Слайдер диапазона</option>
+            </select>
+          </div>
+          <div class="col-md-3 form-check-colmn">
+            <label class="form-label-sec mono">Будет ли вопрос обязательным?</label>
+            <div class="form-check">
+              <input class="form-check-input q-req" type="checkbox" {% if q.is_required %}checked{% endif %}> 
+              <label class="form-check-label">Обязательный</label> 
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ui answers -->
+    <div class="answers-ui mt-2"></div>
+    <div class="mt-2">
+      <button class="btn btn-brutal btn-update">Обновить</button>
+      <button class="btn btn-danger btn-del">Удалить</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="q-block">
+  <h5 class="mono">Добавить свои вопросы</h5>
+  <div id="new-questions"></div>
+  <button id="btn-add-q" class="btn btn-secondary">Новый вопрос</button>
+  <button id="btn-create" class="btn btn-brutal">Сохранить вопросы</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const token = "{{ token }}";
+  const reviewId = "{{ review.review_id }}";
+  const csrf = (document.cookie.match(/(?:^|; )admin_csrf=([^;]*)/)||[])[1] || '';
+  function headers() {
+    return { "Content-Type":"application/json", "X-CSRF-Token": decodeURIComponent(csrf) };
+  }
+
+  // Helpers for answers UI
+  function clear(el){ while(el.firstChild) el.removeChild(el.firstChild); }
+  function ensureInt(v, d){ const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; }
+
+  function renderAnswers(block, type, meta={}) {
+    const ui = block.querySelector('.answers-ui');
+    clear(ui);
+
+    if (type === 'text') {
+      const label = document.createElement('label');
+      label.className = 'form-label-sec'
+      label.innerHTML = 'Заполняется сотрудником'
+      const input = document.createElement('input');
+      input.className = 'form-control brutal-input';
+      input.type = 'text';
+      input.placeholder = 'Пример ответа';
+      input.disabled = true;
+      ui.appendChild(label);
+      ui.appendChild(input);
+      return;
+    }
+
+    if (type === 'textarea') {
+      const label = document.createElement('label');
+      label.className = 'form-label-sec'
+      label.innerHTML = 'Заполняется сотрудником'
+      const ta = document.createElement('textarea');
+      ta.className = 'form-control brutal-input';
+      ta.rows = 3;
+      ta.placeholder = 'Пример ответа';
+      ta.disabled = true;
+      ui.appendChild(label);
+      ui.appendChild(ta);
+      return;
+    }
+
+    if (type === 'range_slider') {
+      const label = document.createElement('label');
+      label.className = 'form-label-sec'
+      label.innerHTML = 'Диапазон значений'
+      const container = document.createElement('div');
+      container.className = 'range-slider-container';
+      
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.className = 'form-range';
+      slider.min = meta.min || 1;
+      slider.max = meta.max || 10;
+      slider.step = meta.step || 1;
+      slider.value = Math.floor((parseInt(slider.min) + parseInt(slider.max)) / 2);
+      slider.disabled = true;
+      
+      const valueDisplay = document.createElement('div');
+      valueDisplay.className = 'range-value mono mt-1 medium';
+      valueDisplay.textContent = slider.value;
+      
+      const settingsRow = document.createElement('div');
+      settingsRow.className = 'row g-2 mt-2';
+      
+      const minCol = document.createElement('div');
+      minCol.className = 'col-2';
+      const minLabel = document.createElement('label');
+      minLabel.className = 'form-label-sec mono';
+      minLabel.textContent = 'Минимум:';
+      const minInput = document.createElement('input');
+      minInput.type = 'number';
+      minInput.className = 'form-control form-control-md';
+      minInput.value = meta.min || 1;
+      minInput.addEventListener('change', () => {
+        slider.min = minInput.value;
+        if (parseInt(slider.value) < parseInt(slider.min)) {
+          slider.value = slider.min;
+          valueDisplay.textContent = slider.value;
+        }
+      });
+      minCol.append(minLabel, minInput);
+      
+      const maxCol = document.createElement('div');
+      maxCol.className = 'col-2';
+      const maxLabel = document.createElement('label');
+      maxLabel.className = 'form-label-sec mono';
+      maxLabel.textContent = 'Максимум:';
+      const maxInput = document.createElement('input');
+      maxInput.type = 'number';
+      maxInput.className = 'form-control form-control-md';
+      maxInput.value = meta.max || 10;
+      maxInput.addEventListener('change', () => {
+        slider.max = maxInput.value;
+        if (parseInt(slider.value) > parseInt(slider.max)) {
+          slider.value = slider.max;
+          valueDisplay.textContent = slider.value;
+        }
+      });
+      maxCol.append(maxLabel, maxInput);
+      
+      settingsRow.append(minCol, maxCol);
+      
+      slider.addEventListener('input', () => {
+        valueDisplay.textContent = slider.value;
+      });
+      
+      container.append(slider, valueDisplay, settingsRow);
+      ui.appendChild(label);
+      ui.appendChild(container);
+      return;
+    }
+
+    function addOptionRow(kind, labelText='') {
+      const row = document.createElement('div');
+      row.className = 'd-flex align-items-center gap-2 mb-2 ans-'+kind+'-row';
+      const inp = document.createElement('input');
+      inp.type = kind;
+      inp.className = 'form-check-input';
+      inp.disabled = true;
+      const txt = document.createElement('input');
+      txt.type = 'text';
+      txt.className = 'form-control brutal-input ans-'+kind+'-label';
+      txt.placeholder = 'Пример ответа';
+      txt.value = labelText || '';
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-sm btn-outline-danger ans-del-row';
+      del.textContent = '×';
+      del.addEventListener('click', () => row.remove());
+      row.append(inp, txt, del);
+      return row;
+    }
+
+    if (type === 'radio' || type === 'checkbox') {
+      const list = document.createElement('div');
+      list.className = 'ans-'+type+'-list';
+      const label = document.createElement('label');
+      label.className = 'form-label-sec'
+      label.style = 'margin-bottom: 7px;'
+      label.innerHTML = 'Варианты ответов'
+      if (meta && Array.isArray(meta.options) && meta.options.length) {
+        meta.options.forEach(o => list.appendChild(addOptionRow(type, o.option_text ?? o.label ?? o.value ?? '')));
+      } else {
+        list.appendChild(addOptionRow(type, ''));
+      }
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn-md btn-secondary mt-1 ans-add-row';
+      addBtn.textContent = '+ Добавить вариант';
+      addBtn.addEventListener('click', () => list.appendChild(addOptionRow(type, '')));
+      ui.append(label, list, addBtn);
+      return;
+    }
+  }
+
+  function collectOptions(block) {
+    const type = block.querySelector('.q-type').value;
+    if (type === 'radio' || type === 'checkbox') {
+      const selector = type === 'radio' ? '.ans-radio-label' : '.ans-checkbox-label';
+      const labels = Array.from(block.querySelectorAll(selector))
+        .map(i => i.value.trim())
+        .filter(Boolean);
+      return labels.map((text, idx) => ({ option_text: text, position: idx }));
+    }
+    if (type === 'range_slider') {
+      const inputs = block.querySelectorAll('.range-slider-container input[type="number"]');
+      const minInput = inputs?.[0]; const maxInput = inputs?.[1];
+      return {
+        min: parseInt(minInput?.value || 1),
+        max: parseInt(maxInput?.value || 10),
+        step: 1
+      };
+    }
+    return null;
+  }
+
+  function getUsedPositions(excludeElement = null) {
+    const positions = new Set();
+    document.querySelectorAll('#questions .q-block .q-pos').forEach(input => {
+      if (input !== excludeElement) {
+        const value = parseInt(input.value);
+        if (!isNaN(value) && value > 0) positions.add(value);
+      }
+    });
+    document.querySelectorAll('#new-questions .q-block .q-pos').forEach(input => {
+      if (input !== excludeElement) {
+        const value = parseInt(input.value);
+        if (!isNaN(value) && value > 0) positions.add(value);
+      }
+    });
+    return positions;
+  }
+
+  function validatePosition(input) {
+    const value = parseInt(input.value);
+    const usedPositions = getUsedPositions(input);
+    if (isNaN(value) || value <= 0) {
+      alert('Позиция должна быть числом больше 0');
+      return false;
+    }
+    if (usedPositions.has(value)) {
+      alert('Эта позиция уже используется другим вопросом');
+      return false;
+    }
+    return true;
+  }
+
+  function getNextAvailablePosition(excludeElement = null) {
+    const usedPositions = getUsedPositions(excludeElement);
+    let nextPosition = 1;
+    while (usedPositions.has(nextPosition)) nextPosition++;
+    return nextPosition;
+  }
+
+  function setupExistingBlocks() {
+    document.querySelectorAll('#questions .q-block').forEach(block => {
+      const typeSel = block.querySelector('.q-type');
+      let meta = {};
+      try { meta = JSON.parse(block.getAttribute('data-meta') || '{}'); } catch(e){}
+      renderAnswers(block, typeSel.value, meta);
+      typeSel.addEventListener('change', () => renderAnswers(block, typeSel.value, {}));
+
+      const posInput = block.querySelector('.q-pos');
+      posInput.addEventListener('change', () => { validatePosition(posInput); });
+
+      block.querySelector('.btn-update').addEventListener('click', async () => {
+        if (!validatePosition(posInput)) return;
+        const id = block.dataset.id;
+        const opts = collectOptions(block);
+
+        const payload = {
+          question_text: block.querySelector('.q-text').value,
+          question_type: block.querySelector('.q-type').value,
+          is_required: block.querySelector('.q-req').checked,
+          position: parseInt(block.querySelector('.q-pos').value || '0'),
+        };
+        if (opts !== null) payload.options = opts;
+
+        const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, {
+          method:'PATCH',
+          headers: headers(),
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) { alert('Ошибка обновления'); return; }
+        location.reload();
+      });
+
+      block.querySelector('.btn-del').addEventListener('click', async () => {
+        const id = block.dataset.id;
+        if (!confirm('Удалить вопрос?')) return;
+        const res = await fetch(`/api/reviews/${reviewId}/questions/${id}?t=${token}`, { method:'DELETE', headers: headers() });
+        if (!res.ok) { alert('Ошибка удаления'); return; }
+        location.reload();
+      });
+    });
+  }
+
+  function createNewBlock() {
+    const el = document.createElement('div');
+    el.className = 'q-block';
+    el.innerHTML = `
+      <div class="col-12">
+        <label class="form-label mono">Новый вопрос</label>
+        <input class="form-control brutal-input mb-2 q-text" placeholder="Текст вопроса">
+      </div>
+      <div class="row g-2 align-content-center">
+        <label class="form-label mono">Параметры вопроса</label>
+        <div style="display:flex; flex-direction: row; justify-content: center; align-items: center" class="row g-2">
+          <div class="col-md-3"> 
+            <label class="form-label-sec mono">Номер вопроса</label>
+            <input class="form-control brutal-input q-pos" type="number" value="${getNextAvailablePosition()}" min="1">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label-sec mono">Формат ответа</label>
+            <select class="form-select brutal-input q-type">
+              <option value="text">Текст (строка)</option>
+              <option value="textarea">Текст (абзац)</option>
+              <option value="radio">Один из списка</option>
+              <option value="checkbox">Несколько из списка</option>
+              <option value="range_slider">Слайдер</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label-sec mono">Будет ли вопрос обязательным?</label>
+            <div class="form-check">
+              <input class="form-check-input q-req" type="checkbox">
+              <label class="form-check-label">Обязательный</label>
+             </div>
+          </div>
+        </div>
+      </div>
+      <label class="form-label mono">Поле ответа</label>
+      <div class="answers-ui mt-2"></div>
+    `;
+    return el;
+  }
+
+  function collectNewItems() {
+    return Array.from(document.querySelectorAll('#new-questions .q-block')).map(b => {
+      const opts = collectOptions(b);
+      const item = {
+        question_text: b.querySelector('.q-text').value,
+        question_type: b.querySelector('.q-type').value,
+        is_required: b.querySelector('.q-req').checked,
+        position: parseInt(b.querySelector('.q-pos').value || '0'),
+      };
+      if (opts !== null) item.options = opts;
+      return item;
+    });
+  }
+
+  document.querySelector('#btn-save-review').addEventListener('click', async () => {
+    await saveAll();
+  });
+
+  document.querySelector('#btn-delete-review').addEventListener('click', async () => {
+    if (!confirm('Удалить весь опрос и все связанные анкеты/ответы? Действие необратимо.')) return;
+    const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, { method:'DELETE', headers: headers() });
+    if (!res.ok) { alert('Ошибка удаления'); return; }
+    window.location.href = '/';
+  });
+
+  setupExistingBlocks();
+
+  const newWrap = document.querySelector('#new-questions');
+  document.querySelector('#btn-add-q').addEventListener('click', () => {
+    const newBlock = createNewBlock();
+    newWrap.appendChild(newBlock);
+
+    const typeSel = newBlock.querySelector('.q-type');
+    renderAnswers(newBlock, typeSel.value, {});
+    typeSel.addEventListener('change', () => renderAnswers(newBlock, typeSel.value, {}));
+    
+    const posInput = newBlock.querySelector('.q-pos');
+    posInput.addEventListener('change', () => {
+      if (!validatePosition(posInput)) {
+        posInput.value = getNextAvailablePosition(posInput);
+      }
+    });
+  });
+
+  document.querySelector('#btn-create').addEventListener('click', async () => {
+    let valid = true;
+    document.querySelectorAll('#new-questions .q-block .q-pos').forEach(input => {
+      if (!validatePosition(input)) valid = false;
+    });
+    if (!valid) {
+      alert('Исправьте ошибки в позициях вопросов перед сохранением');
+      return;
+    }
+
+    const items = collectNewItems();
+    if (!items.length) return;
+
+    const res = await fetch(`/api/reviews/${reviewId}/questions?t=${token}`, {
+      method:'POST', headers: headers(), body: JSON.stringify(items)
+    });
+    if (!res.ok) { alert('Ошибка создания'); return; }
+    alert('Вопросы добавлены в форму!');
+    location.reload();
+  });
+
+  // ===== Unified save and autosave logic =====
+  async function saveReviewMeta() {
+    const payload = {
+      title: document.querySelector('#title').value,
+      description: document.querySelector('#description').value,
+      anonymity: document.querySelector('#anonymity').value === 'true',
+      start_at: document.querySelector('#start_at').value || null,
+      end_at: document.querySelector('#end_at').value || null,
+    };
+    const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error('Ошибка сохранения формы');
+  }
+
+  async function saveExistingQuestions() {
+    const blocks = Array.from(document.querySelectorAll('#questions .q-block'));
+    for (const block of blocks) {
+      const id = block.dataset.id;
+      const opts = collectOptions(block);
+      const payload = {
+        question_text: block.querySelector('.q-text').value,
+        question_type: block.querySelector('.q-type').value,
+        is_required: block.querySelector('.q-req').checked,
+        position: parseInt(block.querySelector('.q-pos').value || '0'),
+      };
+      if (opts !== null) payload.options = opts;
+      const res = await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, {
+        method:'PATCH', headers: headers(), body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('Ошибка сохранения вопроса');
+    }
+  }
+
+  async function createNewQuestionsIfAny() {
+    const items = collectNewItems();
+    if (!items.length) return;
+    const res = await fetch(`/api/reviews/${reviewId}/questions?t=${token}`, {
+      method:'POST', headers: headers(), body: JSON.stringify(items)
+    });
+    if (!res.ok) throw new Error('Ошибка создания вопросов');
+  }
+
+  async function saveAll() {
+    const saveBtn = document.querySelector('#btn-save-review');
+    const original = saveBtn.textContent;
+    try {
+      saveBtn.disabled = true; saveBtn.textContent = 'Сохранение...';
+      await saveReviewMeta();
+      await saveExistingQuestions();
+      await createNewQuestionsIfAny();
+      alert('Форма успешно сохранена!');
+      // reload only if there were new questions (positions/order might change)
+      if (document.querySelector('#new-questions .q-block')) location.reload();
+    } catch (e) {
+      alert(e.message || 'Ошибка сохранения');
+    } finally {
+      saveBtn.disabled = false; saveBtn.textContent = original;
+    }
+  }
+
+  // Autosave: review meta
+  let metaAutosaveTimer = null;
+  ['#title','#description','#anonymity','#start_at','#end_at'].forEach(sel => {
+    const el = document.querySelector(sel);
+    el?.addEventListener('input', () => {
+      clearTimeout(metaAutosaveTimer);
+      metaAutosaveTimer = setTimeout(() => {
+        saveReviewMeta().catch(()=>{});
+      }, 700);
+    });
+    el?.addEventListener('change', () => {
+      clearTimeout(metaAutosaveTimer);
+      metaAutosaveTimer = setTimeout(() => {
+        saveReviewMeta().catch(()=>{});
+      }, 200);
+    });
+  });
+
+  // Autosave: existing question blocks (debounced per block)
+  function attachBlockAutosave(block) {
+    let t = null;
+    const handler = () => {
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        try {
+          const id = block.dataset.id;
+          if (!id) return; // skip new blocks
+          const opts = collectOptions(block);
+          const payload = {
+            question_text: block.querySelector('.q-text').value,
+            question_type: block.querySelector('.q-type').value,
+            is_required: block.querySelector('.q-req').checked,
+            position: parseInt(block.querySelector('.q-pos').value || '0'),
+          };
+          if (opts !== null) payload.options = opts;
+          await fetch(`/api/questions/${id}?t=${token}&review_id=${reviewId}`, {
+            method:'PATCH', headers: headers(), body: JSON.stringify(payload)
+          });
+        } catch(_) {}
+      }, 800);
+    };
+    block.querySelectorAll('input, textarea, select').forEach(el => {
+      el.addEventListener('input', handler);
+      el.addEventListener('change', handler);
+    });
+  }
+  document.querySelectorAll('#questions .q-block').forEach(attachBlockAutosave);
+
+  // Blocks UI
+  const blockSelect = document.getElementById('block-select');
+  const blockInfo = document.getElementById('block-info');
+
+  async function loadBlocks() {
+    blockSelect.innerHTML = '<option value="">— выберите шаблон —</option>';
+    blockInfo.textContent = '';
+    const res = await fetch(`/api/question-blocks?review_id=${reviewId}&t=${token}`);
+    if (!res.ok) { blockInfo.textContent = 'Не удалось загрузить список блоков'; return; }
+    const blocks = await res.json();
+    blocks.forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.block_id;
+      opt.textContent = `${b.name} ${b.items_count ? '(Вопросов: '+b.items_count+')' : ''}${b.is_public ? ' • общий' : ''}`;
+      blockSelect.appendChild(opt);
+    });
+  }
+
+  document.getElementById('btn-load-blocks').addEventListener('click', loadBlocks);
+  document.getElementById('btn-add-block').addEventListener('click', async () => {
+    const blockId = blockSelect.value;
+    if (!blockId) { alert('Сначала выберите шаблон'); return; }
+    const res = await fetch(`/api/reviews/${reviewId}/blocks/${blockId}?t=${token}`, {
+      method:'POST', headers: headers(), body: JSON.stringify({})
+    });
+    if (!res.ok) { alert('Не удалось добавить блок'); return; }
+    alert('Блок добавлен в форму!');
+    location.reload();
+  });
+
+  // initial blocks load
+  loadBlocks();
+
+  // Create Block Modal
+  const modalHtml = `
+  <div class="modal fade" id="createBlockModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title mono">Создать свой блок</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label mono">Название блока</label>
+            <input id="cb-name" class="form-control brutal-input" placeholder="Название блока">
+          </div>
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <label class="form-label-sec mono mb-0">Видимость блока</label>
+            <select id="cb-public" class="form-select brutal-input" style="max-width:220px">
+              <option value="false">Приватный</option>
+              <option value="true">Общий</option>
+            </select>
+          </div>
+
+          <div class="q-block">
+            <h6 class="mono">Вопросы блока</h6>
+            <div id="cb-questions"></div>
+            <button id="cb-btn-add-q" class="btn btn-secondary" type="button">Добавить вопрос</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="cb-btn-delete-block" class="btn btn-outline-danger d-none">Удалить блок</button>
+          <button type="button" id="cb-btn-save-block" class="btn btn-brutal">Сохранить блок</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  // inject modal once
+  if (!document.getElementById('createBlockModal')) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = modalHtml;
+    document.body.appendChild(wrap.firstElementChild);
+  }
+
+  let bsModalInstance = null;
+  function openCreateBlockModal() {
+    const modalEl = document.getElementById('createBlockModal');
+    if (!window.bootstrap || !window.bootstrap.Modal) {
+      // fallback lazy load if needed; assuming bootstrap present in base.html
+    }
+    bsModalInstance = new bootstrap.Modal(modalEl);
+    // reset form
+    document.getElementById('cb-name').value = '';
+    document.getElementById('cb-public').value = 'false';
+    document.getElementById('cb-btn-delete-block').classList.add('d-none');
+    const list = document.getElementById('cb-questions');
+    list.innerHTML = '';
+    addBlockQuestionRow();
+    bsModalInstance.show();
+  }
+
+  function addBlockQuestionRow(prefill = null) {
+    const list = document.getElementById('cb-questions');
+    const row = document.createElement('div');
+    row.className = 'q-block mt-2';
+    row.innerHTML = `
+      <div class="col-12">
+        <label class="form-label mono">Новый вопрос</label>
+        <input class="form-control brutal-input mb-2 q-text" placeholder="Текст вопроса" value="${prefill?.question_text||''}">
+      </div>
+      <div class="row g-2 align-content-center">
+        <label class="form-label mono">Параметры вопроса</label>
+        <div style="display:flex; flex-direction: row; justify-content: center; align-items: center" class="row g-2">
+          <div class="col-md-3">
+            <label class="form-label-sec mono">Формат ответа</label>
+            <select class="form-select brutal-input q-type">
+              <option value="text">Текст (строка)</option>
+              <option value="textarea">Текст (абзац)</option>
+              <option value="radio">Один из списка</option>
+              <option value="checkbox">Несколько из списка</option>
+              <option value="range_slider">Слайдер</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label-sec mono">Обязательный?</label>
+            <div class="form-check">
+              <input class="form-check-input q-req" type="checkbox" ${prefill?.is_required? 'checked':''}>
+              <label class="form-check-label">Обязательный</label>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label-sec mono"> </label>
+            <div style="padding-top: 10px;">
+            <button type="button" class="btn btn-outline-danger cb-del-q">Удалить вопрос</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <label class="form-label mono">Поле ответа</label>
+      <div class="answers-ui mt-2"></div>
+    `;
+    list.appendChild(row);
+    const typeSel = row.querySelector('.q-type');
+    if (prefill?.question_type) typeSel.value = prefill.question_type;
+    renderAnswers(row, typeSel.value, prefill?.options ? { options: prefill.options } : (prefill?.meta || {}));
+    typeSel.addEventListener('change', () => renderAnswers(row, typeSel.value, {}));
+    row.querySelector('.cb-del-q').addEventListener('click', () => row.remove());
+  }
+
+  document.getElementById('btn-open-create-block').addEventListener('click', openCreateBlockModal);
+  document.getElementById('cb-btn-add-q')?.addEventListener('click', () => addBlockQuestionRow());
+
+  // delegate add button because modal is injected later
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'cb-btn-add-q') {
+      e.preventDefault();
+      addBlockQuestionRow();
+    }
+  });
+
+  function collectBlockQuestions() {
+    return Array.from(document.querySelectorAll('#cb-questions .q-block')).map(b => {
+      const opts = collectOptions(b);
+      const item = {
+        question_text: b.querySelector('.q-text').value,
+        question_type: b.querySelector('.q-type').value,
+        is_required: b.querySelector('.q-req').checked,
+      };
+      if (opts !== null) item.options = opts;
+      return item;
+    });
+  }
+
+  async function saveCustomBlock() {
+    const name = document.getElementById('cb-name').value.trim();
+    const isPublic = document.getElementById('cb-public').value === 'true';
+    if (!name) { alert('Введите название блока'); return; }
+    const items = collectBlockQuestions();
+    if (!items.length) { alert('Добавьте хотя бы один вопрос'); return; }
+    const res = await fetch(`/api/question-blocks?review_id=${reviewId}&t=${token}`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ name, is_public: isPublic, items })
+    });
+    if (!res.ok) { alert('Не удалось сохранить блок'); return; }
+    const data = await res.json();
+    // refresh select
+    await loadBlocks();
+    // preselect just created
+    if (data?.block?.block_id) blockSelect.value = data.block.block_id;
+    const modalEl = document.getElementById('createBlockModal');
+    bootstrap.Modal.getInstance(modalEl)?.hide();
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'cb-btn-save-block') {
+      e.preventDefault();
+      saveCustomBlock();
+    }
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mono mb-3">{{ review.title }}</h1>
+<p class="mb-4">{{ review.description }}</p>
+
+<form id="survey-form" data-api="{{ api_url }}" data-done="{{ done_url }}">
+  {% for q in questions %}
+    <div class="q-block" data-qid="{{ q.question_id }}">
+      <label class="form-label mono">{{ loop.index }}. {{ q.question_text }} {% if q.is_required %}*{% endif %}</label>
+
+      {% if q.question_type == 'text' %}
+        <input class="form-control brutal-input" name="{{ q.question_id }}" type="text" {% if q.is_required %}required{% endif %}>
+
+      {% elif q.question_type == 'textarea' %}
+        <textarea class="form-control brutal-input" name="{{ q.question_id }}" rows="4" {% if q.is_required %}required{% endif %}></textarea>
+
+      {% elif q.question_type == 'radio' %}
+        {% for opt in (q.meta.options or q.options or []) %}
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="{{ q.question_id }}" value="{{ opt.option_id }}" {% if q.is_required %}required{% endif %}>
+            <label class="form-check-label">{{ opt.option_text }}</label>
+          </div>
+        {% endfor %}
+
+      {% elif q.question_type == 'checkbox' %}
+        {% for opt in (q.meta.options or q.options or []) %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="{{ q.question_id }}[]" value="{{ opt.option_id }}">
+            <label class="form-check-label">{{ opt.option_text }}</label>
+          </div>
+        {% endfor %}
+
+      {% elif q.question_type == 'range_slider' or q.question_type == 'scale' or q.question_type == 'rating' %}
+        <input type="range" class="form-range" name="{{ q.question_id }}" min="{{ q.meta.min or 1 }}" max="{{ q.meta.max or 10 }}" step="{{ q.meta.step or 1 }}" {% if q.is_required %}required{% endif %}>
+        <div class="scale-value mono mt-1 small"></div>
+
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  <div class="d-flex gap-2">
+    <button id="btn-save" class="btn btn-secondary" type="button">Сохранить изменения</button>
+    <button id="btn-submit" class="btn btn-brutal" type="button">Отправить</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.__CSRF__ = (document.cookie.match(/(?:^|; )survey_csrf=([^;]*)/)||[])[1] || '';
+</script>
+<script src="{{ url_for('static', path='/js/form.js') }}" defer></script>
+{% endblock %}
