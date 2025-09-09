@@ -136,7 +136,6 @@ def create_report(
     employee_name: str = "employee",
     visualization_url: str | None = None,
     quotes_layout: Literal["inline", "sublist"] = "inline",
-    mark_name: str | None = None,
     write_intermediate_html: bool = True,
 ) -> Path:
     """
@@ -154,15 +153,15 @@ def create_report(
     if not isinstance(numeric_values, dict) or "self-esteem" not in numeric_values:
         raise ValueError("numeric_values должен быть dict с ключом 'self-esteem' и, опционально, 'manage-esteem'.")
 
-    self_scores = numeric_values.get("self-esteem") or {}
-    mgr_scores = numeric_values.get("manage-esteem")
-    if not isinstance(self_scores, dict) or len(self_scores) < 3:
-        raise ValueError("'self-esteem' должен быть dict минимум с 3 метриками.")
-    if mgr_scores is not None and (not isinstance(mgr_scores, dict) or len(mgr_scores) < 3):
-        raise ValueError("'manage-esteem' при наличии должен быть dict минимум с 3 метриками.")
+    self_scores = numeric_values.get("self-esteem")
+    mgr_scores = numeric_values.get("manage-esteem") or {}
+    if not isinstance(mgr_scores, dict) or len(mgr_scores) < 3:
+        raise ValueError("'manage-esteem' должен быть dict минимум с 3 метриками.")
+    if self_scores is not None and (not isinstance(self_scores, dict) or len(mgr_scores) < 3):
+        raise ValueError("'self-esteem' при наличии должен быть dict минимум с 3 метриками.")
 
     plot_path = _ensure_plot_path(visualization_url, employee_name)
-    if mgr_scores is not None:
+    if self_scores is not None:
         plot_360_radar(
             pairs_self=self_scores,
             pairs_mgr=mgr_scores,
@@ -171,7 +170,7 @@ def create_report(
         auto_mark_name = "360°"
     else:
         plot_180_radar(
-            pairs_self=self_scores,
+            pairs_self=mgr_scores,
             save_to=str(plot_path),
         )
         auto_mark_name = "180°"
@@ -184,7 +183,7 @@ def create_report(
     context = build_context_from_jsons(
         sides_json=sides_json,
         recommendations_json=recommendations_json,
-        mark_name=(mark_name or auto_mark_name),
+        mark_name=auto_mark_name,
         employee_name=employee_name,
         visualization_url=plot_uri,
         quotes_layout=quotes_layout,
