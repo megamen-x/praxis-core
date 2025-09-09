@@ -1,5 +1,5 @@
 # app/routers/api.py
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from typing import List
@@ -342,10 +342,9 @@ def create_surveys(
         db.commit()
     return {'task': 'ok'}
 
-@router.get("/api/surveys/{review_id}")
+@router.post("/api/review/get_report")
 async def llm_aggregation(
-    review_id: str, 
-    db: Session = Depends(get_db)
+    review_id: str = Form(...), db: Session = Depends(get_db)
 ):
     # Fetch surveys with the given review_id
     survey_ids = db.scalars(
@@ -382,7 +381,6 @@ async def llm_aggregation(
         if answer.response_text:
             question = db.get(Question, answer.question_id)
             question_text = question.question_text if question else "Unknown Question"
-            manage_esteem[question_text] = []
 
             def _is_number(value: str) -> bool:
                 try:
@@ -392,6 +390,8 @@ async def llm_aggregation(
                     return False
 
             if _is_number(answer.response_text):
+                if question_text not in manage_esteem:
+                    manage_esteem[question_text] = []
                 evaluator_user_id = survey_id_to_evaluator.get(answer.survey_id)
                 if evaluator_user_id == review.subject_user_id:
                     self_exteem[question_text] = float(answer.response_text)
@@ -412,6 +412,8 @@ async def llm_aggregation(
 
             for option_text, question_text in option_texts:
                 if _is_number(option_text):
+                    if question_text not in manage_esteem:
+                        manage_esteem[question_text] = []
                     evaluator_user_id = survey_id_to_evaluator.get(answer.survey_id)
                     if evaluator_user_id == review.subject_user_id:
                         self_exteem[question_text] = float(option_text)
@@ -445,7 +447,7 @@ async def llm_aggregation(
         {"role": "user", "content": SIDES_EXTRACTING_PROMPT.format(feedback=feedback)}
     ]
 
-    completion = get_so_completion(
+    completion = await get_so_completion(
         log=log, 
         model_name=settings.MODEL_NAME, 
         client=OPENAI_CLIENT, 
@@ -465,15 +467,15 @@ async def llm_aggregation(
     }
     log.append(new_user_msg)
 
-    rec = get_so_completion(
+    rec = await get_so_completion(
         log, 
         model_name=settings.MODEL_NAME, 
         client=OPENAI_CLIENT, 
         pydantic_model=Recommendations, 
         provider_name='openrouter'
     )
-    
-    return create_report(
+    print(self_exteem, manage_esteem)
+    path_to_file = str(create_report(
         templates_dir='jinja_templates',
         template_name='base.html.jinja',
         sides_json=json.loads(completion),
@@ -483,4 +485,5 @@ async def llm_aggregation(
         visualization_url=None,
         quotes_layout="inline",
         write_intermediate_html=True
-    )
+    ))
+    return {"path_to_file": path_to_file}

@@ -2,7 +2,7 @@ import json
 import math
 import builtins
 import numpy as np
-from openai import OpenAI
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from typing import Callable, Any, Mapping, Literal
 from pydantic import BaseModel

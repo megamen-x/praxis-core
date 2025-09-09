@@ -6,6 +6,7 @@ from typing import Optional, Tuple
 
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import FSInputFile
+import httpx
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -14,9 +15,10 @@ from src.db.session import LocalSession
 from src.db.models import Review, Survey, ReviewStatus, SurveyStatus
 from src.app.services.telegram_bot import get_telegram_bot_service
 from src.app.routers.api import llm_aggregation
+from dotenv import dotenv_values
 
 logger = logging.getLogger(__name__)
-
+config = dotenv_values(".env")
 
 def _minute_window(now: datetime) -> Tuple[datetime, datetime]:
     start = now.replace(second=0, microsecond=0)
@@ -36,7 +38,7 @@ async def _send_many(messages: list[tuple[int, str, str]]) -> None:
     for chat_id, text, url in messages:
         try:
             kb = InlineKeyboardBuilder()
-            site_url = 'http://'+ settings.HOST + ':' + settings.PORT
+            site_url = config.get("BACKEND_URL", "http://127.0.0.1:8000")
             kb.button(text='Пройти опрос', url=site_url + url)
             await bot_service.bot.send_message(
                 chat_id=chat_id,
@@ -159,7 +161,14 @@ async def _process_end_reviews(db: Session, now: datetime) -> int:
         if creator:
             chat_id = creator.telegram_chat_id
             if chat_id:
-                path_to_report = llm_aggregation(review_id=review.review_id)
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    params = {
+                        "review_id": review.review_id,
+                    }
+                    
+                    resp = await client.post(config.get("BACKEND_URL", "http://127.0.0.1:8000") + '/api/review/get_report', data=params)
+                    data = resp.json()
+                    path_to_report = data["path_to_file"]
                 text = f"📊 Отчет к ревью «{review.title}»"
                 messages.append((chat_id, text, path_to_report))
             else:

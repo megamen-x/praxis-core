@@ -96,10 +96,10 @@ class TelegramBotService:
         kb.adjust(1)  # По одной кнопке в ряд
         return kb.as_markup()
 
-    async def _is_admin(self, db_user_id: int) -> bool:
+    async def _is_admin(self, db_user_id: str) -> bool:
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(self._url(f"/api/users/{db_user_id}/is_admin"))
+                resp = await client.post(self._url(f"/api/user/{db_user_id}/is_admin"))
                 if resp.status_code >= 400:
                     return False
                 try:
