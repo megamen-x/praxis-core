@@ -12,6 +12,19 @@
       <label class="form-label mono">Описание</label>
       <textarea id="description" class="form-control brutal-input" rows="3">{{ review.description or '' }}</textarea>
     </div>
+    <div class="col-12">
+      <label class="form-label mono">Субъект оценки (кто оценивается)</label>
+      <select id="subject_user_id" class="form-select brutal-input">
+        <option value="">— выберите субъекта —</option>
+      </select>
+    </div>
+    <div class="col-12">
+      <label class="form-label mono">Оценщики (кто будет оценивать)</label>
+      <div id="evaluator_checkboxes" class="border rounded p-3" style="max-height: 200px; overflow-y: auto; background-color: #241d44; --bs-border-color: #5550e2;">
+        <div class="text-muted">Загрузка пользователей...</div>
+      </div>
+      <small class="form-text text-muted">Выберите одного или нескольких оценщиков</small>
+    </div>
     <div class="col-md-3">
       <label class="form-label mono">Анонимность</label>
       <select id="anonymity" class="form-select brutal-input">
@@ -405,6 +418,9 @@
       </div>
       <label class="form-label mono">Поле ответа</label>
       <div class="answers-ui mt-2"></div>
+      <div class="mt-2">
+        <button class="btn btn-danger btn-del-new">Удалить вопрос</button>
+      </div>
     `;
     return el;
   }
@@ -451,6 +467,11 @@
         posInput.value = getNextAvailablePosition(posInput);
       }
     });
+
+    // Add delete button functionality
+    newBlock.querySelector('.btn-del-new').addEventListener('click', () => {
+      newBlock.remove();
+    });
   });
 
   document.querySelector('#btn-create').addEventListener('click', async () => {
@@ -476,6 +497,9 @@
 
   // ===== Unified save and autosave logic =====
   async function saveReviewMeta() {
+    const subjectUserId = document.querySelector('#subject_user_id').value;
+    const evaluatorUserIds = Array.from(document.querySelectorAll('.evaluator-checkbox:checked')).map(checkbox => checkbox.value);
+    
     const payload = {
       title: document.querySelector('#title').value,
       description: document.querySelector('#description').value,
@@ -483,8 +507,69 @@
       start_at: document.querySelector('#start_at').value || null,
       end_at: document.querySelector('#end_at').value || null,
     };
+    
+    // Add subject_user_id if selected
+    if (subjectUserId) {
+      payload.subject_user_id = subjectUserId;
+    }
+    
     const res = await fetch(`/api/reviews/${reviewId}?t=${token}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
     if (!res.ok) throw new Error('Ошибка сохранения формы');
+    
+    // Handle evaluator surveys
+    await updateEvaluatorSurveys(evaluatorUserIds);
+  }
+
+  async function updateEvaluatorSurveys(selectedEvaluatorIds) {
+    try {
+      // Get existing surveys
+      const existingSurveysRes = await fetch(`/api/reviews/${reviewId}/surveys?t=${token}`);
+      let existingSurveys = [];
+      if (existingSurveysRes.ok) {
+        existingSurveys = await existingSurveysRes.json();
+      }
+      
+      const existingEvaluatorIds = existingSurveys.map(survey => survey.evaluator_user_id);
+      
+      // Find evaluators to add (selected but not existing)
+      const evaluatorsToAdd = selectedEvaluatorIds.filter(id => !existingEvaluatorIds.includes(id));
+      
+      // Find evaluators to remove (existing but not selected)
+      const evaluatorsToRemove = existingEvaluatorIds.filter(id => !selectedEvaluatorIds.includes(id));
+      
+      // Add new surveys
+      if (evaluatorsToAdd.length > 0) {
+        const surveyPayload = {
+          evaluator_user_ids: evaluatorsToAdd
+        };
+        const surveyRes = await fetch(`/api/reviews/${reviewId}/surveys?t=${token}`, { 
+          method:'POST', 
+          headers: headers(), 
+          body: JSON.stringify(surveyPayload) 
+        });
+        if (!surveyRes.ok) {
+          console.warn('Failed to create surveys for new evaluators');
+        }
+      }
+      
+      // Remove surveys for unselected evaluators
+      if (evaluatorsToRemove.length > 0) {
+        for (const evaluatorId of evaluatorsToRemove) {
+          const surveyToRemove = existingSurveys.find(s => s.evaluator_user_id === evaluatorId);
+          if (surveyToRemove) {
+            const deleteRes = await fetch(`/api/surveys/${surveyToRemove.survey_id}?t=${token}`, {
+              method: 'DELETE',
+              headers: headers()
+            });
+            if (!deleteRes.ok) {
+              console.warn(`Failed to delete survey for evaluator ${evaluatorId}`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error updating evaluator surveys:', error);
+    }
   }
 
   async function saveExistingQuestions() {
@@ -614,6 +699,91 @@
   // initial blocks load
   loadBlocks();
 
+  // Load users for selection
+  async function loadUsers() {
+    const subjectSelect = document.getElementById('subject_user_id');
+    const evaluatorCheckboxes = document.getElementById('evaluator_checkboxes');
+    
+    // Clear existing options
+    subjectSelect.innerHTML = '<option value="">— выберите субъекта —</option>';
+    evaluatorCheckboxes.innerHTML = '<div class="text-muted">Загрузка пользователей...</div>';
+    
+    try {
+      const res = await fetch(`/api/users?t=${token}`);
+      if (!res.ok) {
+        console.error('Failed to load users');
+        evaluatorCheckboxes.innerHTML = '<div class="text-danger">Ошибка загрузки пользователей</div>';
+        return;
+      }
+      
+      const users = await res.json();
+      
+      // Populate subject select (single choice)
+      users.forEach(user => {
+        const option = document.createElement('option');
+        option.value = user.user_id;
+        option.textContent = `${user.last_name} ${user.first_name} ${user.middle_name || ''} (${user.department || 'Без отдела'})`;
+        if (user.user_id === '{{ review.subject_user_id }}') {
+          option.selected = true;
+        }
+        subjectSelect.appendChild(option);
+      });
+      
+      // Populate evaluator checkboxes (multiple choice)
+      evaluatorCheckboxes.innerHTML = '';
+      users.forEach(user => {
+        const checkboxDiv = document.createElement('div');
+        checkboxDiv.className = 'form-check';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'form-check-input evaluator-checkbox';
+        checkbox.value = user.user_id;
+        checkbox.id = `evaluator_${user.user_id}`;
+        
+        const label = document.createElement('label');
+        label.className = 'form-check-label';
+        label.htmlFor = `evaluator_${user.user_id}`;
+        label.textContent = `${user.last_name} ${user.first_name} ${user.middle_name || ''} (${user.department || 'Без отдела'})`;
+        
+        checkboxDiv.appendChild(checkbox);
+        checkboxDiv.appendChild(label);
+        evaluatorCheckboxes.appendChild(checkboxDiv);
+      });
+      
+      // Load existing evaluators and check them
+      await loadExistingEvaluators();
+      
+    } catch (error) {
+      console.error('Error loading users:', error);
+      evaluatorCheckboxes.innerHTML = '<div class="text-danger">Ошибка загрузки пользователей</div>';
+    }
+  }
+
+  // Load existing evaluators and check them
+  async function loadExistingEvaluators() {
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/surveys?t=${token}`);
+      if (res.ok) {
+        const surveys = await res.json();
+        const evaluatorIds = surveys.map(survey => survey.evaluator_user_id);
+        
+        // Check the checkboxes for existing evaluators
+        evaluatorIds.forEach(userId => {
+          const checkbox = document.getElementById(`evaluator_${userId}`);
+          if (checkbox) {
+            checkbox.checked = true;
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error loading existing evaluators:', error);
+    }
+  }
+
+  // Load users on page load
+  loadUsers();
+
   // Create Block Modal
   const modalHtml = `
   <div class="modal fade" id="createBlockModal" tabindex="-1">
@@ -723,7 +893,6 @@
   }
 
   document.getElementById('btn-open-create-block').addEventListener('click', openCreateBlockModal);
-  document.getElementById('cb-btn-add-q')?.addEventListener('click', () => addBlockQuestionRow());
 
   // delegate add button because modal is injected later
   document.addEventListener('click', (e) => {

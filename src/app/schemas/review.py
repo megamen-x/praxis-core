@@ -6,7 +6,7 @@ from datetime import datetime
 
 class CreateReviewIn(BaseModel):
     created_by_user_id: str
-    subject_user_id: str
+    subject_user_id: Optional[str] = None
     title: str = Field(min_length=1)
     description: Optional[str] = None
     anonymity: bool = True
@@ -16,6 +16,7 @@ class CreateReviewIn(BaseModel):
 
 class ReviewOut(BaseModel):
     review_id: str
+    subject_user_id: str | None = None
     title: str
     description: str | None = None
     anonymity: bool
@@ -26,6 +27,7 @@ class ReviewOut(BaseModel):
 
 
 class UpdateReviewIn(BaseModel):
+    subject_user_id: str | None = None
     title: str | None = None
     description: str | None = None
     anonymity: bool | None = None

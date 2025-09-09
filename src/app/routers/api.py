@@ -165,6 +165,12 @@ async def delete_user(user_id: str, db: Session = Depends(get_db)):
     return {"ok": True, "message": "User deleted successfully"}
 
 
+@router.get("/api/users", response_model=List[UserOut])
+async def get_all_users(db: Session = Depends(get_db)):
+    """Получить список всех пользователей"""
+    users = db.execute(select(User)).scalars().all()
+    return users
+
 @router.get("/api/user/{user_id}/reports", response_model=List[ReportWithReviewOut])
 async def get_user_reports(user_id: str, db: Session = Depends(get_db)):
     """Получить отчеты по конкретному сотруднику (subject_user_id)"""
@@ -279,6 +285,7 @@ async def get_review(review_id: str, db: Session = Depends(get_db)):
     
     return ReviewOut(
         review_id=review.review_id,
+        subject_user_id=review.subject_user_id,
         title=review.title,
         description=review.description,
         anonymity=review.anonymity,
@@ -295,9 +302,16 @@ def create_review(
 ):
     
     created_by = db.get(User, payload.created_by_user_id)
-    subject = db.get(User, payload.subject_user_id)
-    if not created_by or not subject:
-        raise HTTPException(status_code=404, detail=f"User not found: {payload.created_by_user_id}, {payload.subject_user_id}.")
+    if not created_by:
+        raise HTTPException(status_code=404, detail=f"User not found: {payload.created_by_user_id}")
+    
+    # Проверяем subject_user_id только если он предоставлен
+    subject = None
+    if payload.subject_user_id:
+        subject = db.get(User, payload.subject_user_id)
+        if not subject:
+            raise HTTPException(status_code=404, detail=f"Subject user not found: {payload.subject_user_id}")
+    
     review = Review(
         created_by_user_id=payload.created_by_user_id,
         subject_user_id=payload.subject_user_id,
@@ -318,6 +332,19 @@ def create_review(
     db.commit()
     db.refresh(review)
     return review
+
+@router.get("/api/reviews/{review_id}/surveys")
+def get_surveys(review_id: str, db: Session = Depends(get_db)):
+    """Get all surveys for a review"""
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    
+    surveys = db.execute(
+        select(Survey).where(Survey.review_id == review_id)
+    ).scalars().all()
+    
+    return [{"survey_id": s.survey_id, "evaluator_user_id": s.evaluator_user_id, "status": s.status.value} for s in surveys]
 
 @router.post("/api/reviews/{review_id}/surveys")
 # _: None = Depends(require_bot_auth)
@@ -341,6 +368,17 @@ def create_surveys(
             s.notification_call = None
         db.commit()
     return {'task': 'ok'}
+
+@router.delete("/api/surveys/{survey_id}")
+def delete_survey(survey_id: str, db: Session = Depends(get_db)):
+    """Delete a survey"""
+    survey = db.get(Survey, survey_id)
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    
+    db.delete(survey)
+    db.commit()
+    return {"ok": True, "message": "Survey deleted successfully"}
 
 @router.post("/api/review/get_report")
 async def llm_aggregation(

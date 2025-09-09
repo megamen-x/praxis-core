@@ -17,7 +17,7 @@ class Review(Base):
 
     review_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     created_by_user_id: Mapped[str] = mapped_column(String, ForeignKey("users.user_id"), nullable=False)
-    subject_user_id: Mapped[str] = mapped_column(String, ForeignKey("users.user_id"), nullable=False)
+    subject_user_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.user_id"), nullable=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     anonymity: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

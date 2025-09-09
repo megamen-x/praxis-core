@@ -20,8 +20,8 @@ config = dotenv_values(".env")
 
 class UserStates(StatesGroup):
     waiting_for_fio = State()
-    waiting_for_subject_fio = State()
-    waiting_for_survey_users = State()
+    waiting_for_department = State()
+    waiting_for_hr_key = State()
 
 
 class TelegramBotService:
@@ -38,21 +38,21 @@ class TelegramBotService:
     CB_CREATE_REVIEW = "create_review"
     CB_LIST_REVIEWS = "list_reviews"
     CB_BACK_TO_MAIN = "back_to_main"
-    CB_CREATE_SURVEY = "create_survey"
     CB_EDIT_REVIEW = "edit_review"
     
     # Тексты кнопок
     BTN_CREATE_REVIEW = "📝 Создать ревью"
     BTN_LIST_REVIEWS = "📝 Посмотреть список ревью"
     BTN_BACK_TO_MAIN = "🔙 Главное меню"
-    BTN_CREATE_SURVEY = "📤 Создать рассылку"
     BTN_EDIT_REVIEW = "✏️ Изменить Review"
 
     # Тексты
     ASK_FIO_MESSAGE = "Введите ваше имя (в формате ФИО): "
-    ASK_SUBJECT_TAG_MESSAGE = "Введите ФИО пользователя, по которому будет создано ревью"
+    ASK_DEPARTMENT_MESSAGE = "Укажите отдел, в котором вы работаете:"
+    ASK_HR_KEY_MESSAGE = "Введите HR ключ для получения прав на создание форм:"
     WELCOME_TEMPLATE = "👋 Привет, {first_name}!\n✅ Вы успешно зарегистрированы!"
     ADMIN_PANEL_MESSAGE = "👑 Вам доступна панель администратора"
+    HR_KEY = "HR2024"  # Простой HR ключ
 
     def __init__(self, bot_token: str, backend_url: str):
         self.bot = Bot(token=bot_token)
@@ -73,6 +73,12 @@ class TelegramBotService:
         kb = InlineKeyboardBuilder()
         kb.button(text=self.BTN_CREATE_REVIEW, callback_data=self.CB_CREATE_REVIEW)
         kb.button(text=self.BTN_LIST_REVIEWS, callback_data=self.CB_LIST_REVIEWS)
+        kb.button(text="✏️ Редактировать профиль", callback_data="edit_profile")
+        return kb.as_markup()
+
+    def _user_keyboard(self):
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✏️ Редактировать профиль", callback_data="edit_profile")
         return kb.as_markup()
 
     def _reviews_list_keyboard(self, reviews):
@@ -90,7 +96,6 @@ class TelegramBotService:
     def _review_actions_keyboard(self, review_id):
         """Создает клавиатуру с действиями для конкретного ревью"""
         kb = InlineKeyboardBuilder()
-        kb.button(text=self.BTN_CREATE_SURVEY, callback_data=f"survey_{review_id}")
         kb.button(text=self.BTN_EDIT_REVIEW, callback_data=f"edit_{review_id}")
         kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
         kb.adjust(1)  # По одной кнопке в ряд
@@ -125,16 +130,17 @@ class TelegramBotService:
         self.dp.callback_query.register(self.create_review_callback, F.data == self.CB_CREATE_REVIEW)
         self.dp.callback_query.register(self.list_reviews_callback, F.data == self.CB_LIST_REVIEWS)
         self.dp.callback_query.register(self.back_to_main_callback, F.data == self.CB_BACK_TO_MAIN)
+        self.dp.callback_query.register(self.hr_key_callback, F.data == "hr_key")
+        self.dp.callback_query.register(self.edit_profile_callback, F.data == "edit_profile")
         
         # Обработчики для конкретных ревью
         self.dp.callback_query.register(self.review_selected_callback, F.data.startswith("review_"))
-        self.dp.callback_query.register(self.create_survey_callback, F.data.startswith("survey_"))
         self.dp.callback_query.register(self.edit_review_callback, F.data.startswith("edit_"))
 
         # Обработчики состояний FSM
         self.dp.message.register(self.handle_fio_input, UserStates.waiting_for_fio)
-        self.dp.message.register(self.handle_subject_fio_input, UserStates.waiting_for_subject_fio)
-        self.dp.message.register(self.handle_survey_users_input, UserStates.waiting_for_survey_users)
+        self.dp.message.register(self.handle_department_input, UserStates.waiting_for_department)
+        self.dp.message.register(self.handle_hr_key_input, UserStates.waiting_for_hr_key)
 
     async def start_polling(self):
         await self.dp.start_polling(self.bot)
@@ -178,7 +184,10 @@ class TelegramBotService:
                 reply_markup=self._admin_keyboard()
             )
         else:
-            await message.answer("🏠 Главное меню")
+            await message.answer(
+                "🏠 Главное меню",
+                reply_markup=self._user_keyboard()
+            )
 
     # ------------------------------- Обработчики состояний ------------------------------- #
     async def handle_fio_input(self, message: Message, state: FSMContext):
@@ -220,13 +229,50 @@ class TelegramBotService:
                     await state.clear()
                     return
                 
-                # Если пользователь не найден, создаем нового
+                # Если пользователь не найден, сохраняем ФИО и переходим к вводу отдела
+                await state.update_data(
+                    first_name=first_name,
+                    last_name=last_name,
+                    middle_name=middle_name
+                )
+                await state.set_state(UserStates.waiting_for_department)
+                await message.answer(self.ASK_DEPARTMENT_MESSAGE)
+                    
+        except Exception as e:
+            logger.error(f"Ошибка при регистрации пользователя: {e}")
+            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def handle_department_input(self, message: Message, state: FSMContext):
+        user_id = message.from_user.id if message.from_user else None
+        if not user_id:
+            return
+
+        department = message.text.strip()
+        if not department:
+            await message.answer("❌ Пожалуйста, укажите отдел.")
+            return
+
+        try:
+            # Получаем сохраненные данные ФИО
+            data = await state.get_data()
+            first_name = data.get('first_name')
+            last_name = data.get('last_name')
+            middle_name = data.get('middle_name')
+
+            if not all([first_name, last_name]):
+                await message.answer("❌ Ошибка: данные ФИО не найдены. Начните регистрацию заново командой /start")
+                await state.clear()
+                return
+
+            # Создаем пользователя с отделом
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 user_data = {
                     "first_name": first_name,
                     "last_name": last_name,
                     "middle_name": middle_name,
+                    "department": department,
                     "telegram_chat_id": str(user_id),
-                    "can_create_review": True
+                    "can_create_review": False  # По умолчанию не может создавать формы
                 }
                 
                 resp = await client.post(self._url("/api/user"), json=user_data)
@@ -235,19 +281,22 @@ class TelegramBotService:
                     user_info = resp.json()
                     self.user_db_ids[user_id] = user_info["user_id"]
                     
-                    if user_info.get("can_create_review", False):
-                        await message.answer(
-                            text=f"{TelegramBotService.WELCOME_TEMPLATE.format(first_name=first_name)}\n\n{TelegramBotService.ADMIN_PANEL_MESSAGE}",
-                            reply_markup=self._admin_keyboard()
-                        )
-                    else:
-                        await message.answer(
-                            TelegramBotService.WELCOME_TEMPLATE.format(first_name=first_name)
-                        )
+                    # Создаем клавиатуру с кнопкой HR ключа
+                    kb = InlineKeyboardBuilder()
+                    kb.button(text="🔑 HR ключ", callback_data="hr_key")
+                    kb.button(text="🔙 Главное меню", callback_data=self.CB_BACK_TO_MAIN)
+                    kb.adjust(1)
+                    
+                    await message.answer(
+                        text=f"{TelegramBotService.WELCOME_TEMPLATE.format(first_name=first_name)}\n"
+                             f"🏢 Отдел: {department}\n\n"
+                             f"Для создания форм введите HR ключ или перейдите в главное меню:",
+                        reply_markup=kb.as_markup()
+                    )
                     
                     await state.clear()
                 elif resp.status_code == 400:
-                    pass
+                    await message.answer("❌ Пользователь с таким Telegram ID уже зарегистрирован.")
                 else:
                     await message.answer("❌ Ошибка при регистрации. Попробуйте еще раз.")
                     
@@ -255,147 +304,41 @@ class TelegramBotService:
             logger.error(f"Ошибка при регистрации пользователя: {e}")
             await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
-    async def handle_subject_fio_input(self, message: Message, state: FSMContext):
-        user_id = message.from_user.id if message.from_user else None
-        if not user_id:
-            return
-
-        fio_text = message.text.strip()
-        
-        # Парсим ФИО субъекта
-        parts = fio_text.split()
-        if len(parts) < 3:
-            await message.answer("❌ Пожалуйста, введите ФИО в формате 'Фамилия Имя Отчество' или 'Фамилия Имя'")
-            return
-
-        last_name = parts[0]
-        first_name = parts[1]
-        middle_name = parts[2]
-
-        try:
-            # Ищем пользователя по ФИО
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                params = {
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "middle_name": middle_name
-                }
-                
-                resp = await client.post(self._url("/api/user/fio"), json=params)
-                
-                if resp.status_code == 200:
-                    subject_user = resp.json()
-                    
-                    # Создаем ревью
-                    review_data = {
-                        "subject_user_id": subject_user["user_id"],
-                        "created_by_user_id": self.user_db_ids[user_id],
-                        "title": "Заголовок ревью"
-                    }
-                    
-                    review_resp = await client.post(self._url("/api/review/create"), json=review_data)
-                    
-                    if review_resp.status_code == 200:
-                        review_info = review_resp.json()
-                        await message.answer(
-                            f"✅ Ревью успешно создано!\n"
-                            f"📝 ID ревью: {review_info['review_id']}\n"
-                            f"👤 Субъект: {first_name} {last_name}\n\n"
-                            f"Выберите действие:",
-                            reply_markup=self._review_actions_keyboard(review_info['review_id'])
-                        )
-                    else:
-                        await message.answer("❌ Ошибка при создании ревью.")
-                else:
-                    await message.answer("❌ Пользователь не найден. Проверьте правильность ФИО.")
-                    
-        except Exception as e:
-            logger.error(f"Ошибка при создании ревью: {e}")
-            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
-        
-        await state.clear()
-
-    async def handle_survey_users_input(self, message: Message, state: FSMContext):
-        """Обработка ввода списка пользователей для рассылки"""
+    async def handle_hr_key_input(self, message: Message, state: FSMContext):
         user_id = message.from_user.id if message.from_user else None
         if not user_id or user_id not in self.user_db_ids:
-            return
-
-        # Получаем данные из состояния
-        data = await state.get_data()
-        review_id = data.get('review_id')
-        
-        if not review_id:
-            await message.answer("❌ Ошибка: не найден ID ревью. Попробуйте снова.")
+            await message.answer("❌ Сначала зарегистрируйтесь командой /start")
             await state.clear()
             return
 
-        users_text = message.text.strip()
+        hr_key = message.text.strip()
         
-        # Парсим список пользователей
-        user_fios = [fio.strip() for fio in users_text.split(',') if fio.strip()]
-        
-        if not user_fios:
-            await message.answer("❌ Список пользователей не может быть пустым. Попробуйте еще раз.")
-            return
-
-        try:
-            # Получаем ID пользователей по ФИО
-            evaluator_user_ids = []
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                for fio in user_fios:
-                    parts = fio.split()
-                    if len(parts) < 2:
-                        await message.answer(f"❌ Неверный формат ФИО: {fio}. Используйте формат 'Фамилия Имя Отчество'")
-                        continue
-                    
-                    last_name = parts[0]
-                    first_name = parts[1]
-                    middle_name = parts[2] if len(parts) > 2 else None
-                    
-                    # Ищем пользователя по ФИО
-                    params = {
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "middle_name": middle_name
-                    }
-                    
-                    resp = await client.post(self._url("/api/user/fio"), json=params)
+        if hr_key == self.HR_KEY:
+            try:
+                # Обновляем права пользователя
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    update_data = {"can_create_review": True}
+                    resp = await client.put(
+                        self._url(f"/api/user/{self.user_db_ids[user_id]}"), 
+                        json=update_data
+                    )
                     
                     if resp.status_code == 200:
-                        user_info = resp.json()
-                        evaluator_user_ids.append(user_info["user_id"])
+                        await message.answer(
+                            "✅ HR ключ принят! Теперь вы можете создавать формы.\n\n"
+                            "🏠 Главное меню:",
+                            reply_markup=self._admin_keyboard()
+                        )
                     else:
-                        await message.answer(f"❌ Пользователь не найден: {fio}")
-                        continue
-
-                if not evaluator_user_ids:
-                    await message.answer("❌ Не найдено ни одного пользователя. Попробуйте еще раз.")
-                    return
-
-                # Создаем рассылку
-                survey_data = {
-                    "evaluator_user_ids": evaluator_user_ids
-                }
-                
-                survey_resp = await client.post(self._url(f"/api/reviews/{review_id}/surveys"), json=survey_data)
-                
-                if survey_resp.status_code == 200:
-                    surveys = survey_resp.json()
-                    await message.answer(
-                        f"✅ **Рассылка отправлена!**\n\n"
-                        f"📝 Создано опросов: {len(surveys)}\n"
-                        f"Опросы будут отправлены участникам во время начала ревью.",
-                        reply_markup=self._admin_keyboard()
-                    )
-                else:
-                    await message.answer("❌ Ошибка при создании рассылки. Попробуйте позже.")
-                
-        except Exception as e:
-            logger.error(f"Ошибка при создании рассылки: {e}")
-            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+                        await message.answer("❌ Ошибка при обновлении прав. Попробуйте позже.")
+            except Exception as e:
+                logger.error(f"Ошибка при обновлении прав пользователя: {e}")
+                await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+        else:
+            await message.answer("❌ Неверный HR ключ. Попробуйте еще раз или перейдите в главное меню.")
         
         await state.clear()
+
 
     # ------------------------------- Callback обработчики ------------------------------- #
     async def create_review_callback(self, callback: CallbackQuery, state: FSMContext):
@@ -404,8 +347,31 @@ class TelegramBotService:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
             return
 
-        await state.set_state(UserStates.waiting_for_subject_fio)
-        await callback.message.edit_text("👤 По какому человеку будет создано ревью? Введите ФИО:")
+        try:
+            # Создаем ревью без subject_user_id (будет заполнен позже в админке)
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                review_data = {
+                    "created_by_user_id": self.user_db_ids[user_id],
+                    "title": "Новое ревью",
+                    "description": "Описание будет добавлено в админке"
+                }
+                
+                review_resp = await client.post(self._url("/api/review/create"), json=review_data)
+                
+                if review_resp.status_code == 200:
+                    review_info = review_resp.json()
+                    await callback.message.edit_text(
+                        f"✅ Ревью успешно создано!\n"
+                        f"📝 ID ревью: {review_info['review_id']}\n\n"
+                        f"Для настройки субъекта оценки и оценщиков перейдите в админку:",
+                        reply_markup=self._review_actions_keyboard(review_info['review_id'])
+                    )
+                else:
+                    await callback.message.edit_text("❌ Ошибка при создании ревью.")
+        except Exception as e:
+            logger.error(f"Ошибка при создании ревью: {e}")
+            await callback.message.edit_text("❌ Произошла ошибка. Попробуйте позже.")
+        
         await callback.answer()
 
     async def list_reviews_callback(self, callback: CallbackQuery, state: FSMContext):
@@ -426,7 +392,13 @@ class TelegramBotService:
                             reply_markup=self._reviews_list_keyboard(reviews)
                         )
                     else:
-                        await callback.message.edit_text("📝 У вас пока нет созданных ревью.")
+                        # Создаем клавиатуру с кнопкой главного меню
+                        kb = InlineKeyboardBuilder()
+                        kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
+                        await callback.message.edit_text(
+                            "📝 У вас пока нет созданных ревью.",
+                            reply_markup=kb.as_markup()
+                        )
                 else:
                     await callback.message.edit_text("❌ Ошибка при получении списка ревью.")
                     
@@ -483,27 +455,6 @@ class TelegramBotService:
         
         await callback.answer()
 
-    async def create_survey_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Обработка создания рассылки для ревью"""
-        user_id = callback.from_user.id if callback.from_user else None
-        if not user_id or user_id not in self.user_db_ids:
-            await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
-            return
-
-        # Извлекаем review_id из callback_data
-        review_id = callback.data.replace("survey_", "")
-        
-        # Сохраняем review_id в состоянии для дальнейшего использования
-        await state.update_data(review_id=review_id)
-        await state.set_state(UserStates.waiting_for_survey_users)
-        
-        await callback.message.edit_text(
-            f"📤 **Создание рассылки**\n\n"
-            f"Введите список пользователей через запятую в формате ФИО:\n\n"
-            f"Пример: Иванов Иван Иванович, Петров Петр Петрович, Сидоров Сидор Сидорович\n\n"
-            f"Используйте /cancel для отмены."
-        )
-        await callback.answer()
 
     async def edit_review_callback(self, callback: CallbackQuery, state: FSMContext):
         """Обработка редактирования ревью - переход на сайт"""
@@ -549,6 +500,59 @@ class TelegramBotService:
                     
         except Exception as e:
             logger.error(f"Ошибка при получении ревью: {e}")
+            await callback.message.edit_text("❌ Произошла ошибка. Попробуйте позже.")
+        
+        await callback.answer()
+
+    async def hr_key_callback(self, callback: CallbackQuery, state: FSMContext):
+        """Обработка нажатия кнопки HR ключа"""
+        user_id = callback.from_user.id if callback.from_user else None
+        if not user_id or user_id not in self.user_db_ids:
+            await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
+            return
+
+        await state.set_state(UserStates.waiting_for_hr_key)
+        await callback.message.edit_text(
+            f"🔑 **HR ключ**\n\n{self.ASK_HR_KEY_MESSAGE}\n\n"
+            f"Используйте /cancel для отмены."
+        )
+        await callback.answer()
+
+    async def edit_profile_callback(self, callback: CallbackQuery, state: FSMContext):
+        """Обработка редактирования профиля"""
+        user_id = callback.from_user.id if callback.from_user else None
+        if not user_id or user_id not in self.user_db_ids:
+            await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
+            return
+
+        try:
+            # Получаем информацию о пользователе
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(self._url(f"/api/user/{self.user_db_ids[user_id]}"))
+                
+                if resp.status_code == 200:
+                    user_info = resp.json()
+                    
+                    # Создаем клавиатуру для редактирования
+                    kb = InlineKeyboardBuilder()
+                    kb.button(text="✏️ Изменить ФИО", callback_data="edit_fio")
+                    kb.button(text="🏢 Изменить отдел", callback_data="edit_department")
+                    kb.button(text="🔙 Главное меню", callback_data=self.CB_BACK_TO_MAIN)
+                    kb.adjust(1)
+                    
+                    await callback.message.edit_text(
+                        f"👤 **Ваш профиль**\n\n"
+                        f"📝 ФИО: {user_info['last_name']} {user_info['first_name']} {user_info.get('middle_name', '')}\n"
+                        f"🏢 Отдел: {user_info.get('department', 'Не указан')}\n"
+                        f"🔑 Права на создание форм: {'Да' if user_info.get('can_create_review', False) else 'Нет'}\n\n"
+                        f"Выберите, что хотите изменить:",
+                        reply_markup=kb.as_markup()
+                    )
+                else:
+                    await callback.message.edit_text("❌ Ошибка при получении данных профиля.")
+                    
+        except Exception as e:
+            logger.error(f"Ошибка при получении профиля: {e}")
             await callback.message.edit_text("❌ Произошла ошибка. Попробуйте позже.")
         
         await callback.answer()
