@@ -363,13 +363,18 @@ async def llm_aggregation(
     # Get review to compare subject_user_id for self-evaluation
     review = db.get(Review, review_id)
 
+    subject_first_name = review.subject_user.first_name
+    subject_last_name = review.subject_user.last_name
+    subject_middle_name = review.subject_user.middle_name
+    subject_name = ' '.join([subject_last_name, subject_first_name, subject_middle_name])
     answers = db.scalars(
         select(Answer)
         .where(Answer.survey_id.in_(survey_ids))
     ).all()
 
     grouped_text_answers = {}
-    numeric_answer = {"Самооценка": {}}
+    self_exteem = {}
+    manage_esteem = {}
     for answer in answers:
         if answer.survey_id not in grouped_text_answers:
             grouped_text_answers[answer.survey_id] = {"response_texts": [], "option_texts": []}
@@ -377,7 +382,7 @@ async def llm_aggregation(
         if answer.response_text:
             question = db.get(Question, answer.question_id)
             question_text = question.question_text if question else "Unknown Question"
-            numeric_answer[question_text] = []
+            manage_esteem[question_text] = []
 
             def _is_number(value: str) -> bool:
                 try:
@@ -389,9 +394,9 @@ async def llm_aggregation(
             if _is_number(answer.response_text):
                 evaluator_user_id = survey_id_to_evaluator.get(answer.survey_id)
                 if evaluator_user_id == review.subject_user_id:
-                    numeric_answer["Самооценка"][question_text] = float(answer.response_text)
+                    self_exteem[question_text] = float(answer.response_text)
                 else:
-                    numeric_answer[question_text].append(float(answer.response_text)) 
+                    manage_esteem[question_text].append(float(answer.response_text)) 
             else:
                 grouped_text_answers[answer.survey_id]["response_texts"].append([
                     question_text, answer.response_text
@@ -409,22 +414,20 @@ async def llm_aggregation(
                 if _is_number(option_text):
                     evaluator_user_id = survey_id_to_evaluator.get(answer.survey_id)
                     if evaluator_user_id == review.subject_user_id:
-                        numeric_answer["Самооценка"][question_text] = float(option_text)
+                        self_exteem[question_text] = float(option_text)
                     else:
-                        numeric_answer[question_text].append(float(option_text)) 
+                        manage_esteem[question_text].append(float(option_text)) 
                 else:
                     grouped_text_answers[answer.survey_id]["option_texts"].append([
                         question_text, option_text
                     ])
     
-    for k, v in list(numeric_answer.items()):
-        if k == "Самооценка":
-            continue
+    for k, v in list(manage_esteem.items()):
         if isinstance(v, list):
             if len(v) > 0:
-                numeric_answer[k] = sum(v) / len(v)
+                manage_esteem[k] = sum(v) / len(v)
             else:
-                numeric_answer[k] = None
+                manage_esteem[k] = None
 
     feedback = ''
 
@@ -466,9 +469,11 @@ async def llm_aggregation(
         pydantic_model=Recommendations, 
         provider_name='openrouter'
     )
-    
-    return {
+    temp = {
         "sides": json.loads(completion),
         "recommendations": json.loads(rec),
-        "numeric_answer": numeric_answer
+        "manage_esteem": manage_esteem,
+        "self_esteem": self_exteem,
+        "employee_name": subject_name
     }
+    return {'nothing': temp}

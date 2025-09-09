@@ -32,7 +32,8 @@ dependencies = [
     "pytest>=8.4.1",
     "psycopg2-binary",
     "httpx",
-    "aiogram"
+    "aiogram",
+    "numpy"
 ]
 
 [tool.setuptools.packages.find]
