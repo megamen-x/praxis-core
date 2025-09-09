@@ -1,5 +1,5 @@
 <a name="readme-top"></a>  
-<div align="center"><img width="100%" src="https://github.com/megamen-x/praxis-core/blob/vibe-code-nice/src/app/static/assets/praxis_banner.png" alt="product banner"></div>
+<div align="center"><img width="100%" src="https://github.com/megamen-x/praxis-core/blob/main/src/app/static/assets/praxis_banner.png" alt="product banner"></div>
 <div align="center">
   <p align="center">
     <h1 align="center">Praxis Core</h1>
@@ -15,29 +15,31 @@
 
 **Contents** |
 :---:|
-[Abstract](#title1) |
-[Description](#title2) |
-[Testing and Deployment](#title3) |
-[Updates](#title4) |
+[Аннотация](#title1) |
+[Описание](#title2) |
+[Тестирование](#title3) |
+[Обновления](#title4) |
 
 </center>
 
-## <h3 align="start"><a id="title1">Abstract</a></h3> 
+## <h3 align="start"><a id="title1">Аннотация</a></h3> 
 **Main theme of product development**
 
-The relevance of this topic is associated with smth idk lol xd.
+Актуальность данной темы связана с растущими требованиями к развитию персонала в условиях высокой конкурентной среды. Неэффективность традиционных методов сбора обратной связи, которые отнимают до 90% времени HR-менеджеров на рутинные задачи (рассылка, напоминания, агрегация данных), приводит к замедлению карьерного роста сотрудников, принятию необоснованных кадровых решений и, как следствие, к потере ключевых талантов и снижению продуктивности бизнеса. Потребность в быстром, объективном и глубоком анализе soft skills сотрудников highlights необходимость внедрения инновационных, автоматизированных решений в области управления персоналом.
 
-**The developed solution can be used to:**
-* usage varian 1;
-* usage varian 1.
+**Разработанное решение может быть использовано для:**
 
-**The task involves working with real working environment, so the solution includes several key tasks:**
-* smth about tg bot user experience;
-* smth about own web-forms.
+* Автоматизации процесса сбора, анализа и представления обратной связи в корпоративной среде;
+* Оптимизации бизнес-процессов в области управления эффективностью (Performance Management) и развития лидерских качеств.
+
+**Задача подразумевает работу с текстовыми и числовыми данными от ревьюеров, поэтому решение включает несколько ключевых задач для обучения моделей:**
+
+* Точное агрегирование количественных оценок и автоматическое формирование диаграмм Radar Chart;
+* Анализ отзывов для выявления сильных сторон, зон роста и генерации персонализированных рекомендаций по развитию.
 
 <p align="right">(<a href="#readme-top"><i>Back to top</i></a>)</p>
 
-## <h3 align="start"><a id="title2">Description</a></h3>
+## <h3 align="start"><a id="title2">Описание</a></h3>
 
 <h4 align="start"><a>Solution Architecture</a></h4>
 
@@ -73,7 +75,7 @@ The relevance of this topic is associated with smth idk lol xd.
 </details> 
 
 <details>
-  <summary> <strong><i>Data processing sheme</i></strong> </summary>
+  <summary> <strong><i>Data processing sheme (WIP)</i></strong> </summary>
 
   ```mermaid
   
@@ -83,7 +85,7 @@ The relevance of this topic is associated with smth idk lol xd.
 <details>
   <summary> <strong><i>Current project tree</i></strong> </summary>
 
-  ```python
+  ```md
     praxis-core/
     ├── src/
     │   ├── db/
@@ -139,36 +141,44 @@ The relevance of this topic is associated with smth idk lol xd.
 
 <h4 align="start"><a>FrontEnd & BackEnd</a></h4>
 
-**Bootstrap5** was chosen as the main application development stack, as it provides the solution with:
-- Easy scaling of the system for growing data volumes;
-- Cross-platform, easy deployment right out of the box;
-- Quick replacement of deep learning models if necessary;
-- Variability of data analysis with pandas, numpy and others.
+**Bootstrap5** В качестве основного стека разработки приложений был выбран, поскольку он обеспечивает:
+
+- Простое масштабирование системы для растущих объемов данных;
+- Кроссплатформенность, простое развертывание «из коробки»;
+- Быстрая замена моделей глубокого обучения при необходимости;
+- Вариативность анализа данных с помощью pandas, numpy и других.
 
 [![Bootstrap5 Badge](https://img.shields.io/badge/Bootstrap-563D7C?style=for-the-badge&logo=bootstrap&logoColor=white&style=flat-square)](https://getbootstrap.com)
 [![Telegram Badge](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white&style=flat-square)](https://web.telegram.org/)
 
-**FastAPI** was chosen as it provides the solution with:
-- napisat'.
+**FastAPI** был выбран в качестве backend-фреймворка, поскольку он предоставляет:
+
+- Высокую производительность, благодаря асинхронной работе;
+- Простоту написания кода с поддержкой современных возможностей Python, таких как аннотации типов;
+- Встроенную валидацию данных, сериализацию и обработку ошибок, что повышает надежность кода.
 
 [![FastAPI Badge](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi&style=flat-square)](https://fastapi.tiangolo.com)
 
-
-
-
-
-
 <h4 align="start"><a>Data Base</a></h4>
 
-smth about postgresql and his improvements
+**PostgreSQL** был выбран в качестве основной реляционной СУБД, так как он обеспечивает:
+
+- Надежность, отказоустойчивость и строгую соответствие принципам ACID для целостности данных
+- Богатый набор типов данных, включая JSONB для работы с полуструктурированными данными, и мощные расширения (PostGIS, Full-Text Search);
+- Высокую производительность и масштабируемость для больших объемов данных и сложных нагрузок;
+- Соответствие SQL-стандартам и развитую экосистему инструментов для администрирования и миграций
 
 
 [![SQL Badge](https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white&style=flat-square)](https://www.postgresql.org)
 
 
-<h4 align="start"><a>Data Processing</a></h4>
+<h4 align="start"><a>Data Processing (WIP)</a></h4>
 
-smth about data processing and report generations with jinja
+Был использован Schema-guided reasoning для:
+- Анализа противоречивых отзывов;
+- Генерации траектории развития сотрудника;
+
+Реализована автоматизированная генерация отчетов с помощью Jinja2.
 
 
 [![Python Badge](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff&style=flat-square)](https://www.python.org/)
@@ -176,56 +186,47 @@ smth about data processing and report generations with jinja
 
 <h4 align="start"><a>Deployment</a></h4>
 
-smth about docker compose
+**Docker** был выбран для контейнеризации и развертывания, так как он позволяет:
+
+- Обеспечить идентичность сред разработки, тестирования и production, что исключает проблемы с совместимостью;
+- Быстрое развертывание и масштабирование сервисов с помощью оркестраторов (например, Kubernetes);
+- Упрощение управления зависимостями и конфигурацией приложения.
 
 
 [![Docker Badge](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white&style=flat-square)](https://www.docker.com)
 
 
-<h4 align="start"><a>Results</a></h4>
+<h4 align="start"><a>Results (WIP)</a></h4>
 
-Final Report example you can see [here]()
+Пример итогового отчета вы можете увидеть [здесь]()
 
 <p align="right">(<a href="#readme-top"><i>Back to top</i></a>)</p>
 
 
-## <h3 align="start"><a id="title3">Testing and Deployment</a></h3> 
+## <h3 align="start"><a id="title3">Тестирование</a></h3> 
 
   <br />
 
 <details>
-  <summary> <strong><i>Testing models with an Inference app:</i></strong> </summary>
+  <summary> <strong><i>Локальный запуск решения (WIP):</i></strong> </summary>
   
-  - In Visual Studio Code (**Windows-PowerShell recommended**) through the terminal, run the following commands sequentially:
+  - В Visual Studio Code (**рекомендуется Windows-PowerShell**) через терминал последовательно выполните следующие команды:
 
-    - Clone the repository:
+    - Склонируйте репозиторий:
     ```
-    git clone https://github.com/AlexeyLunyakov/SAFE-MACS.git
+    git clone https://github.com/megamen-x/praxis-core.git
     ```
-    - Create your parent directory for docker-machine results output:
+    - схема развертывания будет описана позже:
     ```
-    mkdir -p docker_files
-    ```
-    - Image build:
-    ```
-    docker build -t cv-app -f Dockerfile.gpu .
-    ```
-    - After installing the dependencies (3-5 minutes), you can run Container with GPU:
-    ```
-    docker run -d --gpus all -p 7860:7860 -v "$(pwd)/docker_files:/app/files" --name cv-container cv-app
-    ```
-    or with CPU-only:
-    ```
-    docker build -t cv-app -f Dockerfile.cpu .
-    docker run -p 7861:7860 -v "$(pwd)/docker_files:/app/files" --name cv-container cv-app
+    тест-тест
     ```
 </details> 
 
-Additional instructions for installation and use can be found [here](https://github.com/megamen-x/praxis-core/blob/main/readme.md) and [there](https://github.com/megamen-x/praxis-core/blob/main/readme.md)
+<!-- Additional instructions for installation and use can be found [here](https://github.com/megamen-x/praxis-core/blob/main/readme.md) and [there](https://github.com/megamen-x/praxis-core/blob/main/readme.md) -->
 
 <p align="right">(<a href="#readme-top"><i>Back to top</i></a>)</p>
 
-## <h3 align="start"><a id="title4">Updates</a></h3> 
+## <h3 align="start"><a id="title4">Обновления</a></h3> 
 
 ***ToDo list***
 New feature | WIP | Done |
