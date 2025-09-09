@@ -119,6 +119,7 @@ class TelegramBotService:
     def _register_handlers(self):
         self.dp.message.register(self.start_command, Command("start"))
         self.dp.message.register(self.cancel_command, Command("cancel"))
+        self.dp.message.register(self.menu_command, Command("menu"))
 
         # Callback хендлеры для кнопок
         self.dp.callback_query.register(self.create_review_callback, F.data == self.CB_CREATE_REVIEW)
@@ -150,6 +151,34 @@ class TelegramBotService:
     async def cancel_command(self, message: Message, state: FSMContext):
         await state.clear()
         await message.answer("❌ Операция отменена. Используйте /start для начала работы.")
+
+    async def menu_command(self, message: Message, state: FSMContext):
+        user_id = message.from_user.id if message.from_user else None
+        if not user_id:
+            return
+        # Обеспечим наличие db id пользователя в кэше
+        if user_id not in self.user_db_ids:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    search_resp = await client.get(self._url(f"/api/user/telegram/{user_id}"))
+                    if search_resp.status_code == 200:
+                        user_info = search_resp.json()
+                        self.user_db_ids[user_id] = user_info["user_id"]
+                    else:
+                        await message.answer("❌ Сначала зарегистрируйтесь командой /start")
+                        return
+            except Exception:
+                await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+                return
+
+        is_admin = await self._is_admin(self.user_db_ids[user_id])
+        if is_admin:
+            await message.answer(
+                "🏠 Главное меню",
+                reply_markup=self._admin_keyboard()
+            )
+        else:
+            await message.answer("🏠 Главное меню")
 
     # ------------------------------- Обработчики состояний ------------------------------- #
     async def handle_fio_input(self, message: Message, state: FSMContext):

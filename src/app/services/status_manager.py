@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import FSInputFile
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -12,6 +13,7 @@ from src.app.core.config import settings
 from src.db.session import LocalSession
 from src.db.models import Review, Survey, ReviewStatus, SurveyStatus
 from src.app.services.telegram_bot import get_telegram_bot_service
+from src.app.routers.api import llm_aggregation
 
 logger = logging.getLogger(__name__)
 
@@ -33,20 +35,36 @@ async def _send_many(messages: list[tuple[int, str, str]]) -> None:
 
     for chat_id, text, url in messages:
         try:
-            if url!='':
-                kb = InlineKeyboardBuilder()
-                site_url = 'http://'+ settings.HOST + ':' + settings.PORT
-                kb.button(text='Пройти опрос', url=site_url + url)
-                await bot_service.bot.send_message(
-                    chat_id=chat_id,
-                    text=text,
-                    reply_markup=kb.as_markup()
-                )
-            else:
-                await bot_service.bot.send_message(chat_id=chat_id, text=text)
+            kb = InlineKeyboardBuilder()
+            site_url = 'http://'+ settings.HOST + ':' + settings.PORT
+            kb.button(text='Пройти опрос', url=site_url + url)
+            await bot_service.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=kb.as_markup()
+            )
         except Exception as e:
             logger.error("Failed to send message to %s: %s", chat_id, e)
 
+async def _send_hrs(messages: list[tuple[int, str, str]]) -> None:
+    if not messages:
+        return
+
+    bot_service = get_telegram_bot_service()
+    if not bot_service:
+        logger.warning("Telegram bot service is not available. %d message(s) skipped.", len(messages))
+        return
+
+    for chat_id, text, path_to_file in messages:
+        try:
+            document = FSInputFile(path_to_file)
+            await bot_service.bot.send_document(
+                chat_id=chat_id,
+                document=document,
+                caption=text,
+            )
+        except Exception as e:
+            logger.error("Failed to send message to %s: %s", chat_id, e)
 
 async def _process_start_reviews(db: Session, now: datetime) -> int:
     """
@@ -141,15 +159,15 @@ async def _process_end_reviews(db: Session, now: datetime) -> int:
         if creator:
             chat_id = creator.telegram_chat_id
             if chat_id:
-                link = ""
-                text = f"📊 Отчет готов."
-                messages.append((chat_id, text, link))
+                path_to_report = llm_aggregation(review_id=review.review_id)
+                text = f"📊 Отчет к ревью «{review.title}»"
+                messages.append((chat_id, text, path_to_report))
             else:
                 logger.debug("No telegram chat_id for creator %s (review %s)", creator.user_id, review.review_id)
 
     db.commit()
 
-    await _send_many(messages)
+    await _send_hrs(messages)
 
     logger.info("Completed %d review(s) at %s", len(reviews), start.isoformat())
     return len(reviews)

@@ -32,7 +32,7 @@ from src.llm_agg.schemas.sides import Sides
 from src.llm_agg.response import get_so_completion
 from src.llm_agg.utils import remove_ambiguous_sides
 from src.llm_agg.schemas.recommendations import Recommendations
-
+from src.llm_agg.reports.jinja import create_report
 
 router = APIRouter()
 
@@ -428,7 +428,9 @@ async def llm_aggregation(
                 manage_esteem[k] = sum(v) / len(v)
             else:
                 manage_esteem[k] = None
-
+    numeric_values = {
+        'self-esteem': self_exteem,
+        'manage-esteem': manage_esteem}
     feedback = ''
 
     for i, (u, v) in enumerate(grouped_text_answers.items()):
@@ -469,11 +471,16 @@ async def llm_aggregation(
         pydantic_model=Recommendations, 
         provider_name='openrouter'
     )
-    temp = {
-        "sides": json.loads(completion),
-        "recommendations": json.loads(rec),
-        "manage_esteem": manage_esteem,
-        "self_esteem": self_exteem,
-        "employee_name": subject_name
-    }
-    return {'nothing': temp}
+    
+    return create_report(
+        templates_dir='jinja_templates',
+        template_name='base.html.jinja',
+        sides_json=json.loads(completion),
+        recommendations_json=json.loads(rec),
+        numeric_values=numeric_values,
+        employee_name=subject_name,
+        visualization_url=None,
+        quotes_layout="inline",
+        mark_name='360°' if numeric_values["self-esteem"] else '180°',
+        write_intermediate_html=True
+    )
