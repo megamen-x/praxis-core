@@ -430,11 +430,12 @@ async def llm_aggregation(
                 manage_esteem[k] = None
     numeric_values = {
         'self-esteem': self_exteem,
-        'manage-esteem': manage_esteem}
+        'manage-esteem': manage_esteem
+    }
     feedback = ''
 
-    for i, (u, v) in enumerate(grouped_text_answers.items()):
-        feedback += f"Фидбек № {i+1}: \n"
+    for i, (_, v) in enumerate(grouped_text_answers.items()):
+        feedback += f"Feedback from reviewer №{i+1}: \n"
         feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['response_texts']])
         feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['option_texts']])
         feedback += "\n"
@@ -481,6 +482,5 @@ async def llm_aggregation(
         employee_name=subject_name,
         visualization_url=None,
         quotes_layout="inline",
-        mark_name='360°' if numeric_values["self-esteem"] else '180°',
         write_intermediate_html=True
     )
