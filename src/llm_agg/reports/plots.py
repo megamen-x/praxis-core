@@ -32,7 +32,7 @@ def plot_180_radar(
     top_area: float = 0.88,
     title_y: float = 0.985,
     label_radius: float = 1.12,
-    value_offset_pts: int = 12,  # смещение подписи от точки (в points)
+    value_offset_pts: int = 12
 ):
     print(f'dict{pairs_self}')
     labels = list(pairs_self.keys())
@@ -97,7 +97,7 @@ def plot_180_radar(
             ax.annotate(
                 f"{val:.0f}" if rng > 5 else f"{val:g}",
                 xy=(ang, rr),
-                xytext=(0, value_offset_pts),  # было (0, 0)
+                xytext=(0, value_offset_pts),
                 textcoords="offset points",
                 ha="center",
                 va="center",
@@ -126,17 +126,28 @@ def plot_360_radar(
     value_offset_mgr: int = 12,
     value_offset_self: int = -16,
 ):
-    print(f'dict{pairs_self}, {pairs_mgr}')
-    labels_s = set(pairs_self.keys())
-    labels_m = set(pairs_mgr.keys())
-    print(f'{labels_s}, {labels_m}.')
+    print(f'{pairs_self=}, {pairs_mgr=}')
+    print(f'{pairs_self.keys()=}, {pairs_mgr.keys()=}')
+    labels_s = pairs_self.keys()
+    labels_m = pairs_mgr.keys()
+
+    only_in_self = labels_s - labels_m
+    only_in_mgr  = labels_m - labels_s
+
+    if only_in_self or only_in_mgr:
+        raise ValueError(
+            f"Наборы ключей отличаются: "
+            f"только в pairs_self={sorted(only_in_self)}, "
+            f"только в pairs_mgr={sorted(only_in_mgr)}"
+        )
+    
     if labels_s != labels_m:
         raise ValueError("Both inputs must have the same set of disciplines (labels).")
 
     labels = list(pairs_mgr.keys())
     values_self = np.asarray([pairs_self[lbl] for lbl in labels], dtype=float)
     values_mgr = np.asarray([pairs_mgr[lbl] for lbl in labels], dtype=float)
-    print(f'{values_self}, {values_mgr}.')
+
     fig_bg = "#FBFCFE"
     ax_bg = "#F7F9FC"
     grid_c = "#D6DEE6"
@@ -205,7 +216,7 @@ def plot_360_radar(
             ax.annotate(
                 f"{val:.0f}",
                 xy=(ang, rr),
-                xytext=(0, value_offset_mgr),  # было (0, 0)
+                xytext=(0, value_offset_mgr),
                 textcoords="offset points",
                 ha="center",
                 va="center",
@@ -216,7 +227,7 @@ def plot_360_radar(
             ax.annotate(
                 f"{val:.0f}",
                 xy=(ang, rr),
-                xytext=(0, value_offset_self),  # было (0, -12)
+                xytext=(0, value_offset_self),
                 textcoords="offset points",
                 ha="center",
                 va="center",
