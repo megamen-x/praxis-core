@@ -514,9 +514,14 @@ async def llm_aggregation(
         feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['option_texts']])
         feedback += "\n"
 
+    report = db.execute(select(Report).where(Report.review_id == review_id)).scalar()
+    prompt_to_use = report.prompt if report.prompt else SIDES_EXTRACTING_PROMPT
+    if "{feedback}" not in prompt_to_use:
+        prompt_to_use = prompt_to_use + "\n\nFeedback from managers:\n\n{feedback}"
+
     log = [
         {"role": "system", "content": BASE_PROMPT_WO_TASK},
-        {"role": "user", "content": SIDES_EXTRACTING_PROMPT.format(feedback=feedback)}
+        {"role": "user", "content": prompt_to_use.format(feedback=feedback)}
     ]
 
     completion = await get_so_completion(
@@ -558,11 +563,7 @@ async def llm_aggregation(
         quotes_layout="inline",
         write_intermediate_html=True
     )
-    # upsert Report record with file_path
-    report = db.execute(select(Report).where(Report.review_id == review_id)).scalar_one_or_none()
-    if not report:
-        report = Report(review_id=review_id)
-        db.add(report)
+    # Обновляем Report record с file_path
     report.file_path = path_to_file
     db.commit()
     db.refresh(report)
