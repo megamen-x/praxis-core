@@ -69,6 +69,26 @@ async def _send_hrs(messages: list[tuple[int, str, str]]) -> None:
         except Exception as e:
             logger.error("Failed to send message to %s: %s", chat_id, e)
 
+
+async def _send_hr_text(messages: list[tuple[int, str, str]]) -> None:
+    """Отправка HR текстовых уведомлений с ссылкой на форму ревью."""
+    if not messages:
+        return
+
+    bot_service = get_telegram_bot_service()
+    if not bot_service:
+        logger.warning("Telegram bot service is not available. %d message(s) skipped.", len(messages))
+        return
+
+    for chat_id, text, url in messages:
+        try:
+            await bot_service.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+            )
+        except Exception as e:
+            logger.error("Failed to send message to %s: %s", chat_id, e)
+
 async def _process_start_reviews(db: Session, now: datetime) -> int:
     """
     Переводит ревью со статусом draft в in_progress, если start_at совпадает по минуте.
@@ -242,6 +262,62 @@ async def _process_survey_reminders(db: Session, now: datetime) -> int:
     return len(messages)
 
 
+async def _process_hr_day_before_end(db: Session, now: datetime) -> int:
+    """
+    За 1 день до окончания ревью уведомить HR (создателя), если есть незавершенные опросы.
+    Отправляется однократно, когда `review.end_at` ровно через 1 день от текущего времени (окно по минуте).
+    """
+    # Рассчитываем минутное окно для момента now + 1 день
+    target = now + timedelta(days=1)
+    start = target.replace(second=0, microsecond=0)
+    end = start + timedelta(minutes=1)
+
+    q = (
+        select(Review)
+        .options(selectinload(Review.surveys).selectinload(Survey.evaluator), selectinload(Review.created_by))
+        .where(
+            and_(
+                Review.status == ReviewStatus.in_progress,
+                Review.end_at.isnot(None),
+                Review.end_at >= start,
+                Review.end_at < end,
+            )
+        )
+    )
+
+    reviews = db.execute(q).scalars().all()
+    if not reviews:
+        return 0
+
+    messages: list[tuple[int, str, str]] = []
+
+    for review in reviews:
+        # Собираем всех оценщиков, не завершивших опрос
+        pending = [s for s in review.surveys if s.status in (SurveyStatus.not_started, SurveyStatus.in_progress)]
+        if not pending:
+            continue
+        creator = review.created_by
+        if not creator or not creator.telegram_chat_id:
+            continue
+        # Сформировать список имён
+        names: list[str] = []
+        for s in pending:
+            ev = s.evaluator
+            if ev:
+                parts = [p for p in [ev.last_name, ev.first_name, ev.middle_name, f'@{ev.telegram_username}'] if p]
+                names.append(' '.join(parts))
+        names_text = '\n'.join(f"• {n}" for n in names) if names else "—"
+        text = (
+            f"⏰ До окончания ревью «{review.title}» остался 1 день.\n"
+            f"Не завершили опрос:\n{names_text}"
+        )
+        messages.append((creator.telegram_chat_id, text, review.review_link or ''))
+
+    await _send_hr_text(messages)
+    logger.info("Sent %d HR day-before reminder(s) at %s", len(messages), start.isoformat())
+    return len(messages)
+
+
 async def process_tick(now: Optional[datetime] = None) -> dict:
     """
     Один «тик» планировщика: обработать старт/завершение ревью, разослать уведомления.
@@ -253,12 +329,14 @@ async def process_tick(now: Optional[datetime] = None) -> dict:
     with LocalSession() as db:
         started = await _process_start_reviews(db, now)
         reminders = await _process_survey_reminders(db, now)
+        hr_day_before = await _process_hr_day_before_end(db, now)
         completed = await _process_end_reviews(db, now)
 
         return {
             "reviews_started": started,
             "reviews_completed": completed,
             "survey_reminders": reminders,
+            "hr_day_before": hr_day_before,
             "timestamp": now.isoformat(),
         }
 
