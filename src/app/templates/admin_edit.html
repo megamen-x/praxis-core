@@ -52,6 +52,28 @@
   </div>
 </div>
 
+<h3 class="mono">Промпт для отчёта</h3>
+
+<div class="q-block">
+  <div class="row g-2">
+    <div class="col-md-6">
+      <label class="form-label mono">Режим промпта</label>
+      <select id="prompt-mode" class="form-select brutal-input">
+        <option value="default">Стандартный</option>
+        <option value="custom">Свой</option>
+      </select>
+    </div>
+    <div class="col-12 mt-2">
+      <label class="form-label mono">Текст промпта (используется в LLM агрегации)</label>
+      <textarea id="llm-prompt" class="form-control brutal-input" rows="6" placeholder="Оставьте пустым для стандартного промпта"></textarea>
+      <small class="text-muted">Если оставить пустым и выбрать «Стандартный», будет использован встроенный промпт.</small>
+    </div>
+    <div class="col-12 mt-2">
+      <button id="btn-save-prompt" class="btn btn-brutal" type="button">Сохранить промпт</button>
+    </div>
+  </div>
+</div>
+
 <h3 class="mono">Вопросы</h3>
 
 <div class="q-block">
@@ -62,7 +84,7 @@
         <option value="">— выберите шаблон —</option>
       </select>
     </div>
-    <div class="col-md-6 d-flex gap-2">
+    <div class="col-md-8 button-group-responsive">
       <button id="btn-load-blocks" class="btn btn-secondary" type="button">Обновить список</button>
       <button id="btn-add-block" class="btn btn-brutal" type="button">Добавить блок</button>
       <button id="btn-open-create-block" class="btn btn-outline-secondary" type="button">Создать свой блок</button>
@@ -97,10 +119,9 @@
             </select>
           </div>
           <div class="col-md-3 form-check-colmn">
-            <label class="form-label-sec mono">Будет ли вопрос обязательным?</label>
-            <div class="form-check">
+            <label class="form-label-sec mono">Вопрос обязательный?</label>
+            <div class="required-checkbox-only">
               <input class="form-check-input q-req" type="checkbox" {% if q.is_required %}checked{% endif %}> 
-              <label class="form-check-label">Обязательный</label> 
             </div>
           </div>
         </div>
@@ -132,6 +153,42 @@
   function headers() {
     return { "Content-Type":"application/json", "X-CSRF-Token": decodeURIComponent(csrf) };
   }
+
+  // ===== Report prompt UI =====
+  async function loadReportMeta() {
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/report?t=${token}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.prompt) {
+        document.getElementById('prompt-mode').value = 'custom';
+        document.getElementById('llm-prompt').value = data.prompt || '';
+      } else {
+        document.getElementById('prompt-mode').value = 'default';
+        document.getElementById('llm-prompt').value = '';
+      }
+    } catch(_) {}
+  }
+
+  document.getElementById('prompt-mode').addEventListener('change', () => {
+    const mode = document.getElementById('prompt-mode').value;
+    if (mode === 'default') {
+      // hint: keep textarea but allow empty => backend treats as default when not set
+    }
+  });
+
+  document.getElementById('btn-save-prompt').addEventListener('click', async () => {
+    const mode = document.getElementById('prompt-mode').value;
+    const promptText = (document.getElementById('llm-prompt').value || '').trim();
+    const payload = { prompt: mode === 'custom' ? promptText : '' };
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/report-meta?t=${token}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
+      if (!res.ok) { alert('Не удалось сохранить промпт'); return; }
+      alert('Промпт сохранён');
+    } catch(_) { alert('Ошибка сохранения промпта'); }
+  });
+
+  loadReportMeta();
 
   // Helpers for answers UI
   function clear(el){ while(el.firstChild) el.removeChild(el.firstChild); }
@@ -410,12 +467,11 @@
               <option value="range_slider">Слайдер</option>
             </select>
           </div>
-          <div class="col-md-3">
-            <label class="form-label-sec mono">Будет ли вопрос обязательным?</label>
-            <div class="form-check">
-              <input class="form-check-input q-req" type="checkbox">
-              <label class="form-check-label">Обязательный</label>
-             </div>
+          <div class="col-md-3 form-check-colmn">
+            <label class="form-label-sec mono">Вопрос обязательный?</label>
+            <div class="required-checkbox-only">
+              <input class="form-check-input q-req" type="checkbox"> 
+            </div>
           </div>
         </div>
       </div>
@@ -736,7 +792,7 @@
       evaluatorCheckboxes.innerHTML = '';
       users.forEach(user => {
         const checkboxDiv = document.createElement('div');
-        checkboxDiv.className = 'form-check';
+        checkboxDiv.className = 'evaluator-checkbox-container';
         const username = user.telegram_username ? ('@' + user.telegram_username) : '';
         const fullName = `${user.last_name} ${user.first_name} ${user.middle_name || ''}`.trim();
         const dept = user.department || 'Без отдела';
@@ -796,7 +852,7 @@
   const evaluatorSearch = document.getElementById('evaluator_search');
   evaluatorSearch?.addEventListener('input', () => {
     const q = evaluatorSearch.value.trim().toLowerCase();
-    const items = document.querySelectorAll('#evaluator_checkboxes .form-check');
+    const items = document.querySelectorAll('#evaluator_checkboxes .evaluator-checkbox-container');
     items.forEach(item => {
       const blob = item.getAttribute('data-search') || '';
       item.style.display = blob.includes(q) ? '' : 'none';
@@ -885,11 +941,10 @@
               <option value="range_slider">Слайдер</option>
             </select>
           </div>
-          <div class="col-md-3">
-            <label class="form-label-sec mono">Обязательный?</label>
-            <div class="form-check">
-              <input class="form-check-input q-req" type="checkbox" ${prefill?.is_required? 'checked':''}>
-              <label class="form-check-label">Обязательный</label>
+          <div class="col-md-3 form-check-colmn">
+            <label class="form-label-sec mono">Вопрос обязательный?</label>
+            <div class="required-checkbox-only">
+              <input class="form-check-input q-req" type="checkbox" ${prefill?.is_required? 'checked':''}> 
             </div>
           </div>
           <div class="col-md-3">

@@ -12,6 +12,7 @@ class ReportOut(BaseModel):
     prompt: str | None = None
     analytics_for_reviewers: str | None = None
     recommendations: str | None = None
+    file_path: str | None = None
 
 
 class ReportWithReviewOut(ReportOut):

@@ -242,10 +242,10 @@ async def _process_survey_reminders(db: Session, now: datetime) -> int:
 
         link = survey.survey_link or review.review_link or ""
         text = f"🔔 Напоминание: пройдите опрос по ревью «{review.title}»"
-        messages.append((evaluator.telegram_chat_id, text, link))
 
         if review.end_at:
             if review.end_at - now <= timedelta(days=1):
+                text = f"🔔 Напоминание: осталось менее суток на прохождение опроса по ревью «{review.title}»"
                 survey.notification_call = None
             else:
                 if survey.notification_call:
@@ -254,6 +254,8 @@ async def _process_survey_reminders(db: Session, now: datetime) -> int:
         else:
             survey.notification_call = None
 
+        messages.append((evaluator.telegram_chat_id, text, link))
+        
     db.commit()
 
     await _send_many(messages)

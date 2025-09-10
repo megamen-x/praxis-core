@@ -1,7 +1,6 @@
 # app/services/telegram_bot.py
 import csv, io
 import pandas as pd
-import os
 import logging
 from typing import Dict
 from dotenv import dotenv_values
@@ -9,15 +8,17 @@ from dotenv import dotenv_values
 import httpx
 
 from aiogram.types import ContentType
+from aiogram.types import BufferedInputFile
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
-from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from src.app.core.logging import get_logs_writer_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logs_writer_logger()
 config = dotenv_values(".env")
 
 
@@ -26,6 +27,7 @@ class UserStates(StatesGroup):
     waiting_for_department = State()
     waiting_for_hr_key = State()
     waiting_for_participants_file = State()
+    waiting_for_report_file = State()
 
 
 class TelegramBotService:
@@ -42,13 +44,16 @@ class TelegramBotService:
     CB_CREATE_REVIEW = "create_review"
     CB_LIST_REVIEWS = "list_reviews"
     CB_BACK_TO_MAIN = "back_to_main"
-    CB_EDIT_REVIEW = "edit_review"
+    CB_VIEW_REPORT = "view_report"
+    CB_EDIT_REPORT = "edit_report"
     
     # Тексты кнопок
     BTN_CREATE_REVIEW = "📝 Создать ревью"
     BTN_LIST_REVIEWS = "📝 Посмотреть список ревью"
     BTN_BACK_TO_MAIN = "🔙 Главное меню"
-    BTN_EDIT_REVIEW = "✏️ Изменить Review"
+    BTN_EDIT_REVIEW = "✏️ Изменить ревью"
+    BTN_VIEW_REPORT = "📄 Просмотреть отчёт"
+    BTN_EDIT_REPORT = "📝 Изменить отчёт"
 
     # Тексты
     ASK_FIO_MESSAGE = "Введите ваше имя (в формате ФИО): "
@@ -101,12 +106,22 @@ class TelegramBotService:
         kb.adjust(1)  # По одной кнопке в ряд
         return kb.as_markup()
 
-    def _review_actions_keyboard(self, review_id):
-        """Создает клавиатуру с действиями для конкретного ревью"""
+    async def _review_actions_keyboard(self, review_id, review_link):
+        """Создает клавиатуру с действиями для конкретного ревью."""
         kb = InlineKeyboardBuilder()
-        kb.button(text=self.BTN_EDIT_REVIEW, callback_data=f"edit_{review_id}")
+        kb.button(text=self.BTN_EDIT_REVIEW, url=self._url(review_link))
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                rep = await client.get(self._url(f"/api/reviews/{review_id}/report"))
+                if rep.status_code == 200 and rep.json().get('file_path'):
+                    kb.button(text=self.BTN_VIEW_REPORT, callback_data=f"{self.CB_VIEW_REPORT}_{review_id}")
+                    print(f'{self.CB_EDIT_REPORT}_{review_id}')
+                    kb.button(text=self.BTN_EDIT_REPORT, callback_data=f"{self.CB_EDIT_REPORT}_{review_id}")
+        except Exception:
+            pass
+
         kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
-        kb.adjust(1)  # По одной кнопке в ряд
+        kb.adjust(1)
         return kb.as_markup()
 
     async def _is_admin(self, db_user_id: str) -> bool:
@@ -144,13 +159,15 @@ class TelegramBotService:
         
         # Обработчики для конкретных ревью
         self.dp.callback_query.register(self.review_selected_callback, F.data.startswith("review_"))
-        self.dp.callback_query.register(self.edit_review_callback, F.data.startswith("edit_"))
+        self.dp.callback_query.register(self.view_report_callback, F.data.startswith(self.CB_VIEW_REPORT))
+        self.dp.callback_query.register(self.edit_report_callback, F.data.startswith(self.CB_EDIT_REPORT))
 
         # Обработчики состояний FSM
         self.dp.message.register(self.handle_fio_input, UserStates.waiting_for_fio)
         self.dp.message.register(self.handle_department_input, UserStates.waiting_for_department)
         self.dp.message.register(self.handle_hr_key_input, UserStates.waiting_for_hr_key)
         self.dp.message.register(self.handle_participants_file, UserStates.waiting_for_participants_file)
+        self.dp.message.register(self.handle_report_upload, UserStates.waiting_for_report_file)
 
     async def start_polling(self):
         await self.dp.start_polling(self.bot)
@@ -160,7 +177,6 @@ class TelegramBotService:
         user_id = message.from_user.id if message.from_user else None
         if not user_id:
             return
-        # If user has username, try to auto-link to existing record and update chat_id
         username = message.from_user.username if message.from_user else None
         if username:
             try:
@@ -169,10 +185,8 @@ class TelegramBotService:
                     if resp.status_code == 200:
                         user_info = resp.json()
                         self.user_db_ids[user_id] = user_info["user_id"]
-                        # Ensure chat_id is linked
                         if str(user_info.get("telegram_chat_id")) != str(user_id):
                             await client.put(self._url(f"/api/user/{user_info['user_id']}"), json={"telegram_chat_id": str(user_id)})
-                        # Greet and show appropriate menu
                         is_admin = await self._is_admin(user_info["user_id"])
                         if is_admin:
                             await message.answer(
@@ -194,7 +208,33 @@ class TelegramBotService:
 
     async def cancel_command(self, message: Message, state: FSMContext):
         await state.clear()
-        await message.answer("❌ Операция отменена. Используйте /start для начала работы.")
+
+    async def handle_report_upload(self, message: Message, state: FSMContext):
+        data = await state.get_data()
+        review_id = data.get('waiting_report_upload_for')
+        logger.info(f"handle_report_upload: review_id={review_id}, data={data}")
+        if not review_id or not message.document:
+            return
+        try:
+            file = await self.bot.get_file(message.document.file_id)
+            file_url = f"https://api.telegram.org/file/bot{self.bot.token}/{file.file_path}"
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                file_bytes = (await client.get(file_url)).content
+                files = {
+                    'file': (message.document.file_name or 'report.pdf', file_bytes, message.document.mime_type or 'application/pdf')
+                }
+                upload_url = self._url(f"/api/reviews/{review_id}/report/upload")
+                logger.info(f"Uploading to URL: {upload_url}")
+                res = await client.post(upload_url, files=files)
+                if res.status_code in (200, 201):
+                    await message.answer("✅ Отчёт обновлён.", reply_markup=self._admin_keyboard())
+                else:
+                    await message.answer("❌ Не удалось сохранить отчёт.")
+        except Exception as e:
+            logger.error(f"Ошибка загрузки отчёта: {e}")
+            await message.answer("❌ Ошибка загрузки отчёта.")
+        finally:
+            await state.clear()
 
     async def menu_command(self, message: Message, state: FSMContext):
         user_id = message.from_user.id if message.from_user else None
@@ -394,6 +434,43 @@ class TelegramBotService:
             "📎 Отправьте CSV или XLSX файл со столбцами: last_name, first_name, middle_name (опц.), job_title (опц.), department (опц.), telegram_username (без @), can_create_review (boolean)")
         await callback.answer()
 
+    async def view_report_callback(self, callback: CallbackQuery, state: FSMContext):
+        """Отправка файла отчёта с кнопкой Главное меню"""
+        review_id = callback.data.replace(f"{self.CB_VIEW_REPORT}_", "")
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                rep = await client.get(self._url(f"/api/reviews/{review_id}/report"))
+                if rep.status_code != 200 or not rep.json().get('file_path'):
+                    await client.post(self._url("/api/review/get_report"), data={"review_id": review_id})
+                    rep = await client.get(self._url(f"/api/reviews/{review_id}/report"))
+                if rep.status_code == 200 and rep.json().get('file_path'):
+                    dl = await client.get(self._url(f"/api/reviews/{review_id}/report/download"))
+                    if dl.status_code == 200:
+                        content = dl.content
+                        file_obj = BufferedInputFile(content, 'report.pdf')
+                        await callback.message.answer_document(document=file_obj)
+                        kb = InlineKeyboardBuilder()
+                        kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
+                        await callback.message.answer("Готово.", reply_markup=kb.as_markup())
+                    else:
+                        await callback.message.answer("❌ Не удалось скачать отчёт.")
+                else:
+                    await callback.message.answer("❌ Отчёт не найден и не удалось сгенерировать.")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке отчёта: {e}")
+            await callback.message.answer("❌ Произошла ошибка при получении отчёта.")
+        await callback.answer()
+
+    async def edit_report_callback(self, callback: CallbackQuery, state: FSMContext):
+        """Запрос на загрузку отредактированного отчёта"""
+        review_id = callback.data.replace(f"{self.CB_EDIT_REPORT}_", "")
+        await state.update_data(waiting_report_upload_for=review_id)
+        await state.set_state(UserStates.waiting_for_report_file)
+        kb = InlineKeyboardBuilder()
+        kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
+        await callback.message.edit_text("📝 Загрузите отредактированный файл отчёта (PDF).", reply_markup=kb.as_markup())
+        await callback.answer()
+
     async def handle_participants_file(self, message: Message, state: FSMContext):
         """Обработка полученного файла с участниками"""
         
@@ -485,7 +562,7 @@ class TelegramBotService:
                         f"✅ Ревью успешно создано!\n"
                         f"📝 ID ревью: {review_info['review_id']}\n\n"
                         f"Для настройки субъекта оценки и оценщиков перейдите в админку:",
-                        reply_markup=self._review_actions_keyboard(review_info['review_id'])
+                        reply_markup=await self._review_actions_keyboard(review_info['review_id'], review_info['review_link'])
                     )
                 else:
                     await callback.message.edit_text("❌ Ошибка при создании ревью.")
@@ -565,7 +642,7 @@ class TelegramBotService:
                         f"🔒 Анонимность: {'Да' if review.get('anonymity', True) else 'Нет'}\n"
                         f"📊 Статус: {review.get('status', 'Неизвестно')}\n\n"
                         f"Выберите действие:",
-                        reply_markup=self._review_actions_keyboard(review_id)
+                        reply_markup=await self._review_actions_keyboard(review_id, review.get('review_link'))
                     )
                 else:
                     await callback.message.edit_text("❌ Ревью не найдено.")
@@ -574,48 +651,6 @@ class TelegramBotService:
             logger.error(f"Ошибка при получении ревью: {e}")
             await callback.message.edit_text("❌ Произошла ошибка. Попробуйте позже.")
         
-        await callback.answer()
-
-
-    async def edit_review_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Обработка редактирования ревью - сразу открыть ссылку в браузере"""
-        user_id = callback.from_user.id if callback.from_user else None
-        if not user_id or user_id not in self.user_db_ids:
-            await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
-            return
-
-        # Извлекаем review_id из callback_data
-        review_id = callback.data.replace("edit_", "")
-        
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(self._url(f"/api/review/{review_id}"))
-                if resp.status_code == 200:
-                    review = resp.json()
-                    review_link = review.get('review_link')
-                    if review_link:
-                        kb = InlineKeyboardBuilder()
-                        # Делает кнопку редактирования ссылкой сразу на форму
-                        kb.button(text="✏️ Открыть форму редактирования", url=self._url(review_link))
-                        kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
-                        kb.adjust(1)
-                        await callback.message.edit_text(
-                            f"✏️ **Редактирование ревью**\n\n"
-                            f"📝 {review['title']}\n\n"
-                            f"Откройте форму по кнопке ниже:",
-                            reply_markup=kb.as_markup()
-                        )
-                    else:
-                        await callback.message.edit_text(
-                            f"✏️ Редактирование ревью {review_id}\n\n"
-                            f"❌ Ссылка для редактирования не найдена.",
-                            reply_markup=self._review_actions_keyboard(review_id)
-                        )
-                else:
-                    await callback.message.edit_text("❌ Ревью не найдено.")
-        except Exception as e:
-            logger.error(f"Ошибка при получении ревью: {e}")
-            await callback.message.edit_text("❌ Произошла ошибка. Попробуйте позже.")
         await callback.answer()
 
     async def hr_key_callback(self, callback: CallbackQuery, state: FSMContext):

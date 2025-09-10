@@ -1,5 +1,6 @@
 # app/routers/api.py
-from fastapi import APIRouter, Depends, HTTPException, Request, status, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Form, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from typing import List
@@ -19,7 +20,7 @@ from src.db.models import (
 )
 
 from src.app.schemas.user import UserOut, UserCreate, UserUpdate
-from src.app.schemas.report import ReportWithReviewOut
+from src.app.schemas.report import ReportWithReviewOut, ReportOut
 from src.app.schemas.survey import CreateSurveysIn, SurveyWithUserOut
 from src.app.schemas.review import CreateReviewIn, ReviewOut
 
@@ -541,7 +542,7 @@ async def llm_aggregation(
     rec = await get_so_completion(
         log, 
         model_name=settings.MODEL_NAME, 
-        client=OPENAI_CLIENT, 
+        client=OPENAI_CLIENT,
         pydantic_model=Recommendations, 
         provider_name='openrouter'
     )
@@ -557,4 +558,108 @@ async def llm_aggregation(
         quotes_layout="inline",
         write_intermediate_html=True
     )
-    return {"path_to_file": path_to_file}
+    # upsert Report record with file_path
+    report = db.execute(select(Report).where(Report.review_id == review_id)).scalar_one_or_none()
+    if not report:
+        report = Report(review_id=review_id)
+        db.add(report)
+    report.file_path = path_to_file
+    db.commit()
+    db.refresh(report)
+    return {"path_to_file": path_to_file, "report_id": report.report_id}
+
+
+@router.get("/api/reviews/{review_id}/report", response_model=ReportOut)
+async def get_review_report(review_id: str, db: Session = Depends(get_db)):
+    report = db.execute(select(Report).where(Report.review_id == review_id)).scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return ReportOut(
+        report_id=report.report_id,
+        review_id=report.review_id,
+        strengths=report.strengths,
+        growth_points=report.growth_points,
+        dynamics=report.dynamics,
+        prompt=report.prompt,
+        analytics_for_reviewers=report.analytics_for_reviewers,
+        recommendations=report.recommendations,
+        file_path=report.file_path,
+    )
+
+
+@router.get("/api/reviews/{review_id}/report/download")
+async def download_review_report(review_id: str, db: Session = Depends(get_db)):
+    report = db.execute(select(Report).where(Report.review_id == review_id)).scalar_one_or_none()
+    if not report or not report.file_path:
+        raise HTTPException(status_code=404, detail="Report file not found")
+    try:
+        return FileResponse(path=report.file_path, filename=report.file_path.split('/')[-1], media_type='application/pdf')
+    except Exception:
+        raise HTTPException(status_code=404, detail="Report file missing on disk")
+
+
+@router.post("/api/reviews/{review_id}/report/upload", response_model=ReportOut)
+async def upload_review_report(review_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    # ensure review exists
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    # store uploaded file into out/ dir
+    import os
+    os.makedirs("out", exist_ok=True)
+    filename = f"review-{review_id}-{file.filename}"
+    dest_path = os.path.join("out", filename)
+    with open(dest_path, "wb") as f:
+        f.write(await file.read())
+
+    # upsert Report
+    report = db.execute(select(Report).where(Report.review_id == review_id)).scalar_one_or_none()
+    if not report:
+        report = Report(review_id=review_id)
+        db.add(report)
+    report.file_path = dest_path
+    db.commit()
+    db.refresh(review)
+    db.refresh(report)
+
+    return ReportOut(
+        report_id=report.report_id,
+        review_id=report.review_id,
+        strengths=report.strengths,
+        growth_points=report.growth_points,
+        dynamics=report.dynamics,
+        prompt=report.prompt,
+        analytics_for_reviewers=report.analytics_for_reviewers,
+        recommendations=report.recommendations,
+        file_path=report.file_path,
+    )
+
+
+@router.patch("/api/reviews/{review_id}/report-meta", response_model=ReportOut)
+async def update_report_meta(review_id: str, request: Request, db: Session = Depends(get_db)):
+    payload = await request.json()
+    prompt = payload.get("prompt")
+    if prompt is None:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    report = db.execute(select(Report).where(Report.review_id == review_id)).scalar_one_or_none()
+    if not report:
+        report = Report(review_id=review_id)
+        db.add(report)
+    report.prompt = prompt
+    db.commit()
+    db.refresh(report)
+    return ReportOut(
+        report_id=report.report_id,
+        review_id=report.review_id,
+        strengths=report.strengths,
+        growth_points=report.growth_points,
+        dynamics=report.dynamics,
+        prompt=report.prompt,
+        analytics_for_reviewers=report.analytics_for_reviewers,
+        recommendations=report.recommendations,
+        file_path=report.file_path,
+    )

@@ -16,5 +16,6 @@ class Report(Base):
     prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     analytics_for_reviewers: Mapped[str | None] = mapped_column(Text, nullable=True)
     recommendations: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_path: Mapped[str | None] = mapped_column(String, nullable=True)
 
     review = relationship("Review", back_populates="report")
