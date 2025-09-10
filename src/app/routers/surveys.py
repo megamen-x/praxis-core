@@ -42,9 +42,10 @@ async def form_page(survey_id: str, request: Request, t: str = Query(...), db: S
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
 
-    # Load review with its questions and question options
+    # Load review with its questions, question options, and subject user
     review = db.query(Review).options(
-        joinedload(Review.questions).joinedload(Question.options)
+        joinedload(Review.questions).joinedload(Question.options),
+        joinedload(Review.subject_user)
     ).filter(Review.review_id == survey.review_id).one()
 
     # Build questions context for template
@@ -69,6 +70,8 @@ async def form_page(survey_id: str, request: Request, t: str = Query(...), db: S
             "meta": meta,
         })
 
+    subject_name = f"{review.subject_user.last_name} {review.subject_user.first_name} {review.subject_user.middle_name or ''}".strip()
+
     random_bg_img = randint(1, 5)
     response = templates.TemplateResponse(
         "form.html",
@@ -76,6 +79,7 @@ async def form_page(survey_id: str, request: Request, t: str = Query(...), db: S
             "request": request,
             "survey": survey,
             "review": review,
+            "subject_name": subject_name,
             "background_image": f'assets/site_bg_{random_bg_img}.png',
             "questions": questions,
             "api_url": f"/api/surveys/{survey_id}/answers?t={t}",

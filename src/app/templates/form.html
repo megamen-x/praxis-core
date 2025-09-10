@@ -3,6 +3,12 @@
 <h1 class="mono mb-3">{{ review.title }}</h1>
 <p class="mb-4">{{ review.description }}</p>
 
+{% if subject_name %}
+<div class="subject-info mb-4">
+  <label class="form-label mono", style="margin-bottom: 0rem;">Субъект оценки: {{ subject_name }}</label>
+</div>
+{% endif %}
+
 <form id="survey-form" data-api="{{ api_url }}" data-done="{{ done_url }}">
   {% for q in questions %}
     <div class="q-block" data-qid="{{ q.question_id }}">

@@ -463,6 +463,22 @@ input[type=range].form-range.slider-progress:hover::-ms-fill-lower {
   border-color: #403bdb;
 }
 
+/* Subject info styling */
+.subject-info {
+  padding: 15px;
+  background: #1f1b38;
+  border-radius: 12px;
+  border: 2px solid #544fe0;
+  margin-bottom: 20px;
+}
+
+.subject-info h3 {
+  margin: 0;
+  font-size: 1.1em;
+  color: var(--ink);
+  opacity: 0.8;
+}
+
 /* Mobile breakpoint adjustments */
 @media (max-width: 768px) {
   .button-group-responsive .btn {
@@ -476,5 +492,10 @@ input[type=range].form-range.slider-progress:hover::-ms-fill-lower {
   
   .evaluator-checkbox-container .form-check-label {
     font-size: 0.9em;
+  }
+  
+  .subject-info {
+    padding: 12px;
+    margin-bottom: 15px;
   }
 }
