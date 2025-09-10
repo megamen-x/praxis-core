@@ -130,16 +130,6 @@ def plot_360_radar(
     print(f'{pairs_self.keys()=}, {pairs_mgr.keys()=}')
     labels_s = pairs_self.keys()
     labels_m = pairs_mgr.keys()
-
-    only_in_self = labels_s - labels_m
-    only_in_mgr  = labels_m - labels_s
-
-    if only_in_self or only_in_mgr:
-        raise ValueError(
-            f"Наборы ключей отличаются: "
-            f"только в pairs_self={sorted(only_in_self)}, "
-            f"только в pairs_mgr={sorted(only_in_mgr)}"
-        )
     
     if labels_s != labels_m:
         raise ValueError("Both inputs must have the same set of disciplines (labels).")

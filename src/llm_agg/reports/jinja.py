@@ -153,18 +153,13 @@ def create_report(
     self_scores = numeric_values.get("self-esteem", None)
     mgr_scores = numeric_values.get("manage-esteem", {})
 
-    print('logger in create report')
-    print(f'{self_scores=}')
-    print(f'{mgr_scores=}')
-    print(len(mgr_scores))
-
     if not isinstance(mgr_scores, dict) or len(mgr_scores) < 3:
         raise ValueError("'manage-esteem' должен быть dict минимум с 3 метриками.")
     if self_scores is not None and (not isinstance(self_scores, dict) or len(mgr_scores) < 3):
         raise ValueError("'self-esteem' при наличии должен быть dict минимум с 3 метриками.")
 
     plot_path = _ensure_plot_path(visualization_url, employee_name)
-    if self_scores is not None:
+    if len(self_scores) > 0:
         plot_360_radar(
             pairs_self=self_scores,
             pairs_mgr=mgr_scores,
