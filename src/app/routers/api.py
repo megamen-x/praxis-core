@@ -512,7 +512,8 @@ async def llm_aggregation(
         pydantic_model=Recommendations, 
         provider_name='openrouter'
     )
-    path_to_file = str(create_report(
+
+    path_to_file = create_report(
         templates_dir='jinja_templates',
         template_name='base.html.jinja',
         sides_json=json.loads(completion),
@@ -522,5 +523,5 @@ async def llm_aggregation(
         visualization_url=None,
         quotes_layout="inline",
         write_intermediate_html=True
-    ))
+    )
     return {"path_to_file": path_to_file}

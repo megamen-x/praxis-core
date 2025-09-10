@@ -137,7 +137,7 @@ def create_report(
     visualization_url: str | None = None,
     quotes_layout: Literal["inline", "sublist"] = "inline",
     write_intermediate_html: bool = True,
-) -> Path:
+) -> str:
     """
     1) Генерирует радар (180°/360°) из numeric_values и сохраняет в visualization_url
        (если не задан — создаст путь в tempfile).
@@ -150,11 +150,14 @@ def create_report(
         "manage-esteem": {label: value, ...} | None    # опционально, >=3 метрик
       }
     """
-    if not isinstance(numeric_values, dict) or "self-esteem" not in numeric_values:
-        raise ValueError("numeric_values должен быть dict с ключом 'self-esteem' и, опционально, 'manage-esteem'.")
+    self_scores = numeric_values.get("self-esteem", None)
+    mgr_scores = numeric_values.get("manage-esteem", {})
 
-    self_scores = numeric_values.get("self-esteem")
-    mgr_scores = numeric_values.get("manage-esteem") or {}
+    print('logger in create report')
+    print(f'{self_scores=}')
+    print(f'{mgr_scores=}')
+    print(len(mgr_scores))
+
     if not isinstance(mgr_scores, dict) or len(mgr_scores) < 3:
         raise ValueError("'manage-esteem' должен быть dict минимум с 3 метриками.")
     if self_scores is not None and (not isinstance(self_scores, dict) or len(mgr_scores) < 3):
@@ -212,4 +215,4 @@ def create_report(
 
     base_url = str(Path(templates_dir).resolve())
     HTML(string=html, base_url=base_url).write_pdf(str(pdf_path))
-    return pdf_path
+    return str(pdf_path)
