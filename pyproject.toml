@@ -33,7 +33,11 @@ dependencies = [
     "psycopg2-binary",
     "httpx",
     "aiogram",
-    "numpy"
+    "numpy",
+    "pandas",
+    "python-dotenv",
+    "matplotlib",
+    "weasyprint",
 ]
 
 [tool.setuptools.packages.find]
