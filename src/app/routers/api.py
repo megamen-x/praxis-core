@@ -79,6 +79,17 @@ async def get_user_by_telegram(telegram_chat_id: str, db: Session = Depends(get_
     return user
 
 
+@router.get("/api/user/username/{telegram_username}", response_model=UserOut)
+async def get_user_by_username(telegram_username: str, db: Session = Depends(get_db)):
+    """Получить пользователя по Telegram username (без @)"""
+    user = db.execute(
+        select(User).where(User.telegram_username == telegram_username)
+    ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
 @router.post("/api/user", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     """Создать нового пользователя"""
@@ -90,6 +101,15 @@ async def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
             raise HTTPException(
                 status_code=400, 
                 detail="User with this telegram_chat_id already exists"
+            )
+    if user_data.telegram_username:
+        existing_user_by_username = db.execute(
+            select(User).where(User.telegram_username == user_data.telegram_username)
+        ).scalar_one_or_none()
+        if existing_user_by_username:
+            raise HTTPException(
+                status_code=400,
+                detail="User with this telegram_username already exists"
             )
     
     user = User(**user_data.model_dump())
@@ -144,6 +164,16 @@ async def update_user(user_id: str, user_data: UserUpdate, db: Session = Depends
             raise HTTPException(
                 status_code=400, 
                 detail="User with this email already exists"
+            )
+    # Проверяем уникальность telegram_username если он указан
+    if user_data.telegram_username and user_data.telegram_username != user.telegram_username:
+        existing_user = db.execute(
+            select(User).where(User.telegram_username == user_data.telegram_username)
+        ).scalar_one_or_none()
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="User with this telegram_username already exists"
             )
     
     # Обновляем только переданные поля
