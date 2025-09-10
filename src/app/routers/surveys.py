@@ -20,6 +20,9 @@ from src.db.models import (
 from src.app.schemas.answer import SaveAnswersIn
 from src.app.core.security import issue_csrf, verify_csrf
 from src.app.services.links import verify_token
+from src.app.core.logging import get_logs_writer_logger
+
+logger = get_logs_writer_logger()
 
 router = APIRouter()
 templates = Jinja2Templates(directory=settings.JINJA2_TEMPLATES)

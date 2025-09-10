@@ -10,14 +10,15 @@ import httpx
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session, selectinload
 
-from src.app.core.config import settings
 from src.db.session import LocalSession
 from src.db.models import Review, Survey, ReviewStatus, SurveyStatus
 from src.app.services.telegram_bot import get_telegram_bot_service
-from src.app.routers.api import llm_aggregation
+from src.app.core.logging import get_logs_writer_logger
+
 from dotenv import dotenv_values
 
-logger = logging.getLogger(__name__)
+logger = get_logs_writer_logger()
+
 config = dotenv_values(".env")
 
 def _minute_window(now: datetime) -> Tuple[datetime, datetime]:

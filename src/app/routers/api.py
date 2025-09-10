@@ -33,6 +33,9 @@ from src.llm_agg.response import get_so_completion
 from src.llm_agg.utils import remove_ambiguous_sides
 from src.llm_agg.schemas.recommendations import Recommendations
 from src.llm_agg.reports.jinja import create_report
+from src.app.core.logging import get_logs_writer_logger
+
+logger = get_logs_writer_logger()
 
 router = APIRouter()
 

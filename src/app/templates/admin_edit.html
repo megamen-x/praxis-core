@@ -626,13 +626,13 @@
       clearTimeout(metaAutosaveTimer);
       metaAutosaveTimer = setTimeout(() => {
         saveReviewMeta().catch(()=>{});
-      }, 700);
+      }, 1700);
     });
     el?.addEventListener('change', () => {
       clearTimeout(metaAutosaveTimer);
       metaAutosaveTimer = setTimeout(() => {
         saveReviewMeta().catch(()=>{});
-      }, 200);
+      }, 1200);
     });
   });
 
@@ -657,7 +657,7 @@
             method:'PATCH', headers: headers(), body: JSON.stringify(payload)
           });
         } catch(_) {}
-      }, 800);
+      }, 1800);
     };
     block.querySelectorAll('input, textarea, select').forEach(el => {
       el.addEventListener('input', handler);

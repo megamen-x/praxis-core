@@ -19,6 +19,9 @@ from src.db.models.question_bank import QuestionBlock, QuestionBlockItem, Questi
 
 # service to materialize a block
 from src.app.services.review_blocks import add_block_to_review
+from src.app.core.logging import get_logs_writer_logger
+
+logger = get_logs_writer_logger()
 
 router = APIRouter()
 templates = Jinja2Templates(directory=settings.JINJA2_TEMPLATES)
