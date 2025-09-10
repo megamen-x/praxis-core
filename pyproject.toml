@@ -34,9 +34,11 @@ dependencies = [
     "httpx",
     "aiogram",
     "numpy",
-    "openpyxl",
+    "pandas",
+    "python-dotenv",
+    "matplotlib",
     "weasyprint",
-    "matplotlib"
+    "openpyxl",
 ]
 
 [tool.setuptools.packages.find]
