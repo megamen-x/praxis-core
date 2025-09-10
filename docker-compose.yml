@@ -1,0 +1,12 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app
+    environment:
+      - DATABASE_URL=postgresql://postgres:root@host.docker.internal:5434/praxis_db
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
