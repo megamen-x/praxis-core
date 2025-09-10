@@ -33,7 +33,10 @@ dependencies = [
     "psycopg2-binary",
     "httpx",
     "aiogram",
-    "numpy"
+    "numpy",
+    "openpyxl",
+    "weasyprint",
+    "matplotlib"
 ]
 
 [tool.setuptools.packages.find]
