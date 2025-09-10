@@ -495,7 +495,7 @@ async def llm_aggregation(
     for k, v in list(manage_esteem.items()):
         if isinstance(v, list):
             if len(v) > 0:
-                manage_esteem[k] = sum(v) / len(v)
+                manage_esteem[k] = int(sum(v) / len(v))
             else:
                 manage_esteem[k] = None
     numeric_values = {
@@ -542,8 +542,8 @@ async def llm_aggregation(
         pydantic_model=Recommendations, 
         provider_name='openrouter'
     )
-    print(self_exteem, manage_esteem)
-    path_to_file = str(create_report(
+
+    path_to_file = create_report(
         templates_dir='jinja_templates',
         template_name='base.html.jinja',
         sides_json=json.loads(completion),
@@ -553,5 +553,5 @@ async def llm_aggregation(
         visualization_url=None,
         quotes_layout="inline",
         write_intermediate_html=True
-    ))
+    )
     return {"path_to_file": path_to_file}

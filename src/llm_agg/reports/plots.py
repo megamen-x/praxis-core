@@ -32,16 +32,12 @@ def plot_180_radar(
     top_area: float = 0.88,
     title_y: float = 0.985,
     label_radius: float = 1.12,
-    value_offset_pts: int = 12,  # смещение подписи от точки (в points)
+    value_offset_pts: int = 12
 ):
-    if not pairs_self or len(pairs_self) < 3:
-        raise ValueError("At least 3 disciplines are required.")
-    if not save_to:
-        raise ValueError("Parameter 'save_to' must be a non-empty file path.")
-
+    print(f'dict{pairs_self}')
     labels = list(pairs_self.keys())
     values = np.asarray(list(pairs_self.values()), dtype=float)
-
+    print(f'val:{values}')
     fig_bg = "#FBFCFE"
     ax_bg = "#F7F9FC"
     grid_c = "#D6DEE6"
@@ -101,7 +97,7 @@ def plot_180_radar(
             ax.annotate(
                 f"{val:.0f}" if rng > 5 else f"{val:g}",
                 xy=(ang, rr),
-                xytext=(0, value_offset_pts),  # было (0, 0)
+                xytext=(0, value_offset_pts),
                 textcoords="offset points",
                 ha="center",
                 va="center",
@@ -130,13 +126,21 @@ def plot_360_radar(
     value_offset_mgr: int = 12,
     value_offset_self: int = -16,
 ):
-    if not pairs_self or not pairs_mgr or len(pairs_self) < 3 or len(pairs_mgr) < 3:
-        raise ValueError("Each input must contain at least 3 disciplines.")
-    if not save_to:
-        raise ValueError("Parameter 'save_to' must be a non-empty file path.")
+    print(f'{pairs_self=}, {pairs_mgr=}')
+    print(f'{pairs_self.keys()=}, {pairs_mgr.keys()=}')
+    labels_s = pairs_self.keys()
+    labels_m = pairs_mgr.keys()
 
-    labels_s = set(pairs_self.keys())
-    labels_m = set(pairs_mgr.keys())
+    only_in_self = labels_s - labels_m
+    only_in_mgr  = labels_m - labels_s
+
+    if only_in_self or only_in_mgr:
+        raise ValueError(
+            f"Наборы ключей отличаются: "
+            f"только в pairs_self={sorted(only_in_self)}, "
+            f"только в pairs_mgr={sorted(only_in_mgr)}"
+        )
+    
     if labels_s != labels_m:
         raise ValueError("Both inputs must have the same set of disciplines (labels).")
 
@@ -212,7 +216,7 @@ def plot_360_radar(
             ax.annotate(
                 f"{val:.0f}",
                 xy=(ang, rr),
-                xytext=(0, value_offset_mgr),  # было (0, 0)
+                xytext=(0, value_offset_mgr),
                 textcoords="offset points",
                 ha="center",
                 va="center",
@@ -223,7 +227,7 @@ def plot_360_radar(
             ax.annotate(
                 f"{val:.0f}",
                 xy=(ang, rr),
-                xytext=(0, value_offset_self),  # было (0, -12)
+                xytext=(0, value_offset_self),
                 textcoords="offset points",
                 ha="center",
                 va="center",
