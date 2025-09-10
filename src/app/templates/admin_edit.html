@@ -20,6 +20,9 @@
     </div>
     <div class="col-12">
       <label class="form-label mono">Оценщики (кто будет оценивать)</label>
+      <div class="mb-2">
+        <input id="evaluator_search" class="form-control brutal-input" type="text" placeholder="Поиск оценщиков: ФИО, отдел, @username">
+      </div>
       <div id="evaluator_checkboxes" class="border rounded p-3" style="max-height: 200px; overflow-y: auto; background-color: #241d44; --bs-border-color: #5550e2;">
         <div class="text-muted">Загрузка пользователей...</div>
       </div>
@@ -734,7 +737,12 @@
       users.forEach(user => {
         const checkboxDiv = document.createElement('div');
         checkboxDiv.className = 'form-check';
-        
+        const username = user.telegram_username ? ('@' + user.telegram_username) : '';
+        const fullName = `${user.last_name} ${user.first_name} ${user.middle_name || ''}`.trim();
+        const dept = user.department || 'Без отдела';
+        const searchBlob = [fullName, dept, username].join(' ').toLowerCase();
+        checkboxDiv.setAttribute('data-search', searchBlob);
+
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.className = 'form-check-input evaluator-checkbox';
@@ -744,7 +752,7 @@
         const label = document.createElement('label');
         label.className = 'form-check-label';
         label.htmlFor = `evaluator_${user.user_id}`;
-        label.textContent = `${user.last_name} ${user.first_name} ${user.middle_name || ''} (${user.department || 'Без отдела'})`;
+        label.textContent = `${fullName} (${dept}) ${username}`.trim();
         
         checkboxDiv.appendChild(checkbox);
         checkboxDiv.appendChild(label);
@@ -783,6 +791,17 @@
 
   // Load users on page load
   loadUsers();
+
+  // Evaluator search filter
+  const evaluatorSearch = document.getElementById('evaluator_search');
+  evaluatorSearch?.addEventListener('input', () => {
+    const q = evaluatorSearch.value.trim().toLowerCase();
+    const items = document.querySelectorAll('#evaluator_checkboxes .form-check');
+    items.forEach(item => {
+      const blob = item.getAttribute('data-search') || '';
+      item.style.display = blob.includes(q) ? '' : 'none';
+    });
+  });
 
   // Create Block Modal
   const modalHtml = `
