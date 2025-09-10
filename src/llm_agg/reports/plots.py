@@ -34,14 +34,10 @@ def plot_180_radar(
     label_radius: float = 1.12,
     value_offset_pts: int = 12,  # смещение подписи от точки (в points)
 ):
-    if not pairs_self or len(pairs_self) < 3:
-        raise ValueError("At least 3 disciplines are required.")
-    if not save_to:
-        raise ValueError("Parameter 'save_to' must be a non-empty file path.")
-
+    print(f'dict{pairs_self}')
     labels = list(pairs_self.keys())
     values = np.asarray(list(pairs_self.values()), dtype=float)
-
+    print(f'val:{values}')
     fig_bg = "#FBFCFE"
     ax_bg = "#F7F9FC"
     grid_c = "#D6DEE6"
@@ -130,20 +126,17 @@ def plot_360_radar(
     value_offset_mgr: int = 12,
     value_offset_self: int = -16,
 ):
-    if not pairs_self or not pairs_mgr or len(pairs_self) < 3 or len(pairs_mgr) < 3:
-        raise ValueError("Each input must contain at least 3 disciplines.")
-    if not save_to:
-        raise ValueError("Parameter 'save_to' must be a non-empty file path.")
-
+    print(f'dict{pairs_self}, {pairs_mgr}')
     labels_s = set(pairs_self.keys())
     labels_m = set(pairs_mgr.keys())
+    print(f'{labels_s}, {labels_m}.')
     if labels_s != labels_m:
         raise ValueError("Both inputs must have the same set of disciplines (labels).")
 
     labels = list(pairs_mgr.keys())
     values_self = np.asarray([pairs_self[lbl] for lbl in labels], dtype=float)
     values_mgr = np.asarray([pairs_mgr[lbl] for lbl in labels], dtype=float)
-
+    print(f'{values_self}, {values_mgr}.')
     fig_bg = "#FBFCFE"
     ax_bg = "#F7F9FC"
     grid_c = "#D6DEE6"
