@@ -1,3 +1,4 @@
+# app/routers/admin.py
 import json
 from random import randint
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -12,14 +13,13 @@ from src.app.schemas.review import UpdateReviewIn
 from src.app.schemas.question import QuestionCreate, QuestionUpdate, BlockRefIn
 from src.app.services.links import verify_token
 
-# models
 from src.db.models.review import Review
 from src.db.models.question import Question, QuestionType, QuestionOption
 from src.db.models.question_bank import QuestionBlock, QuestionBlockItem, QuestionTemplate, QuestionTemplateOption
 
-# service to materialize a block
 from src.app.services.review_blocks import add_block_to_review
 from src.app.core.logging import get_logs_writer_logger
+
 
 logger = get_logs_writer_logger()
 
@@ -54,8 +54,8 @@ async def admin_review_page(review_id: str, request: Request, t: str = Query(...
             "question_id": q.question_id,
             "question_text": q.question_text,
             "question_type": q.question_type.value,
-            "options": opts,     # used to prefill choices in UI
-            "meta": meta,        # used to render range settings
+            "options": opts,
+            "meta": meta,
             "is_required": q.is_required,
             "position": q.position,
         })
@@ -113,7 +113,6 @@ async def delete_review(review_id: str, request: Request, db: Session = Depends(
     return {"ok": True}
 
 
-# Create questions directly in this review
 @router.post("/api/reviews/{review_id}/questions")
 async def create_review_questions(review_id: str, items: list[QuestionCreate], request: Request, db: Session = Depends(get_db), t: str = Query(...)):
     token = verify_token(t)
@@ -126,7 +125,6 @@ async def create_review_questions(review_id: str, items: list[QuestionCreate], r
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
-    # ensure positions do not collide
     existing_positions = set(p for (p,) in db.execute(
         select(Question.position).where(Question.review_id == review_id)
     ).all())
@@ -142,7 +140,6 @@ async def create_review_questions(review_id: str, items: list[QuestionCreate], r
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Unsupported question type: {it.question_type}")
 
-        # Pick a non-conflicting position
         desired = max(1, it.position or 0)
         position = desired if desired not in existing_positions else next_free_pos(desired)
         existing_positions.add(position)
@@ -155,9 +152,7 @@ async def create_review_questions(review_id: str, items: list[QuestionCreate], r
             position=position,
         )
 
-        # meta/options
         if qtype in (QuestionType.radio, QuestionType.checkbox):
-            # it.options is list[OptionIn]
             for i, opt in enumerate(it.options or []):
                 db.add(QuestionOption(
                     question=q,
@@ -165,7 +160,6 @@ async def create_review_questions(review_id: str, items: list[QuestionCreate], r
                     position=opt.position if opt.position is not None else i,
                 ))
         elif qtype == QuestionType.range_slider:
-            # it.options may be RangeMeta (pydantic) or dict
             rng = it.options or {"min": 1, "max": 10, "step": 1}
             try:
                 if hasattr(rng, "model_dump"):
@@ -178,7 +172,7 @@ async def create_review_questions(review_id: str, items: list[QuestionCreate], r
             except Exception:
                 q.meta_json = json.dumps({"min": 1, "max": 10, "step": 1})
         else:
-            q.meta_json = None  # text/textarea
+            q.meta_json = None
 
         db.add(q)
         created += 1
@@ -187,7 +181,6 @@ async def create_review_questions(review_id: str, items: list[QuestionCreate], r
     return {"ok": True, "count": created}
 
 
-# Update a question that belongs to this review
 @router.patch("/api/questions/{question_id}")
 async def update_question(question_id: str, patch: QuestionUpdate, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
     token = verify_token(t)
@@ -200,13 +193,11 @@ async def update_question(question_id: str, patch: QuestionUpdate, request: Requ
     if not question or question.review_id != review_id:
         raise HTTPException(status_code=404, detail="Question not found")
 
-    # Basic updates
     if patch.question_text is not None:
         question.question_text = patch.question_text
     if patch.is_required is not None:
         question.is_required = patch.is_required
 
-    # Position uniqueness inside review
     if patch.position is not None and patch.position > 0:
         desired = patch.position
         if desired != question.position:
@@ -220,7 +211,6 @@ async def update_question(question_id: str, patch: QuestionUpdate, request: Requ
                 desired = (max(used) + 1) if used else 1
             question.position = desired
 
-    # Type and options/meta updates
     if patch.question_type is not None:
         try:
             new_type = QuestionType(patch.question_type)
@@ -229,7 +219,6 @@ async def update_question(question_id: str, patch: QuestionUpdate, request: Requ
         question.question_type = new_type
 
     if patch.options is not None:
-        # Clear previous options if any
         if question.options:
             for opt in list(question.options):
                 db.delete(opt)
@@ -243,7 +232,6 @@ async def update_question(question_id: str, patch: QuestionUpdate, request: Requ
                     position=opt.position if getattr(opt, "position", None) is not None else i
                 ))
         elif question.question_type == QuestionType.range_slider:
-            # patch.options may be RangeMeta (pydantic) or dict
             rng = patch.options or {"min": 1, "max": 10, "step": 1}
             try:
                 if hasattr(rng, "model_dump"):
@@ -260,7 +248,6 @@ async def update_question(question_id: str, patch: QuestionUpdate, request: Requ
     return {"ok": True}
 
 
-# Delete a question from the review (question is review-owned)
 @router.delete("/api/reviews/{review_id}/questions/{question_id}")
 async def delete_review_question(review_id: str, question_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...)):
     token = verify_token(t)
@@ -278,7 +265,6 @@ async def delete_review_question(review_id: str, question_id: str, request: Requ
     return {"ok": True}
 
 
-# List available blocks for this review's creator (and public)
 @router.get("/api/question-blocks")
 async def list_blocks_for_review(review_id: str = Query(...), t: str = Query(...), db: Session = Depends(get_db)):
     token = verify_token(t)
@@ -289,10 +275,9 @@ async def list_blocks_for_review(review_id: str = Query(...), t: str = Query(...
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
-    # Blocks created by the same user or public
     blocks = db.execute(
         select(QuestionBlock).where(
-            (QuestionBlock.created_by_user_id == review.created_by_user_id) | (QuestionBlock.is_public == True)  # noqa: E712
+            (QuestionBlock.created_by_user_id == review.created_by_user_id) | (QuestionBlock.is_public == True)
         ).order_by(QuestionBlock.name.asc())
     ).scalars().all()
 
@@ -308,7 +293,6 @@ async def list_blocks_for_review(review_id: str = Query(...), t: str = Query(...
     return out
 
 
-# Add a whole block to a review
 @router.post("/api/reviews/{review_id}/blocks/{block_id}")
 async def add_block(review_id: str, block_id: str, _: BlockRefIn, request: Request, db: Session = Depends(get_db), t: str = Query(...)):
     token = verify_token(t)
@@ -325,7 +309,6 @@ async def add_block(review_id: str, block_id: str, _: BlockRefIn, request: Reque
     return {"ok": True, "count": count}
 
 
-# Create a new question block for the review's author
 @router.post("/api/question-blocks")
 async def create_question_block(request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
     token = verify_token(t)
@@ -388,7 +371,6 @@ async def create_question_block(request: Request, db: Session = Depends(get_db),
                     position=i,
                 ))
         elif qtype_enum == QuestionType.range_slider:
-            # options expected as {min, max, step}
             try:
                 rng = {
                     "min": int((options or {}).get("min", 1)),
@@ -411,7 +393,6 @@ async def create_question_block(request: Request, db: Session = Depends(get_db),
     return {"ok": True, "block": {"block_id": block.block_id, "name": block.name, "is_public": block.is_public}}
 
 
-# Update block metadata (name, is_public)
 @router.patch("/api/question-blocks/{block_id}")
 async def update_question_block(block_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
     token = verify_token(t)
@@ -444,7 +425,6 @@ async def update_question_block(block_id: str, request: Request, db: Session = D
     return {"ok": True}
 
 
-# Replace block items with provided items
 @router.put("/api/question-blocks/{block_id}/items")
 async def replace_block_items(block_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
     token = verify_token(t)
@@ -465,18 +445,15 @@ async def replace_block_items(block_id: str, request: Request, db: Session = Dep
     body = await request.json()
     items = body.get("items") or []
 
-    # Remove old items and their templates/options
     old_items = list(block.items)
     for bi in old_items:
         tmpl = bi.question_template
-        # delete options
         for opt in list(tmpl.options or []):
             db.delete(opt)
         db.delete(bi)
         db.delete(tmpl)
     db.flush()
 
-    # Create new items
     for idx, it in enumerate(items):
         qtext = (it.get("question_text") or "").strip()
         qtype = it.get("question_type")
@@ -532,7 +509,6 @@ async def replace_block_items(block_id: str, request: Request, db: Session = Dep
     return {"ok": True}
 
 
-# Delete block entirely
 @router.delete("/api/question-blocks/{block_id}")
 async def delete_question_block(block_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
     token = verify_token(t)
@@ -550,7 +526,6 @@ async def delete_question_block(block_id: str, request: Request, db: Session = D
     if block.created_by_user_id != review.created_by_user_id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # delete items and their templates/options first
     for bi in list(block.items):
         tmpl = bi.question_template
         for opt in list(tmpl.options or []):

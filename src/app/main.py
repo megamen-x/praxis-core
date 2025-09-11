@@ -26,9 +26,7 @@ app.include_router(api.router)
 async def on_startup():
     Base.metadata.create_all(bind=engine)
     
-    # Запускаем Telegram-бота параллельно с приложением
     asyncio.create_task(start_telegram_bot())
-    # Запускаем статус-менеджер параллельно с приложением
     asyncio.create_task(run_status_manager_loop())
 
 

@@ -42,7 +42,6 @@ class TelegramBotService:
     - /cancel: отмена текущего действия
     """
 
-    # Callback данные для кнопок
     CB_CREATE_REVIEW = "create_review"
     CB_LIST_REVIEWS = "list_reviews"
     CB_BACK_TO_MAIN = "back_to_main"
@@ -50,7 +49,6 @@ class TelegramBotService:
     CB_EDIT_REPORT = "edit_report"
     CB_LIST_REVIEW_SURVEYS = "list_review_surveys"
 
-    # Тексты кнопок
     BTN_CREATE_REVIEW = "📝 Создать ревью"
     BTN_LIST_REVIEWS = "📝 Посмотреть список ревью"
     BTN_BACK_TO_MAIN = "🔙 Главное меню"
@@ -59,13 +57,12 @@ class TelegramBotService:
     BTN_EDIT_REPORT = "📝 Изменить отчёт"
     BTN_VIEW_SURVEYS = "🧩 Посмотреть опросы участников"
 
-    # Тексты
     ASK_FIO_MESSAGE = "Введите ваше имя (в формате ФИО): "
     ASK_DEPARTMENT_MESSAGE = "Укажите отдел, в котором вы работаете:"
     ASK_HR_KEY_MESSAGE = "Введите HR ключ для получения прав на создание форм:"
     WELCOME_TEMPLATE = "👋 Привет, {first_name}!\n✅ Вы успешно зарегистрированы!"
     ADMIN_PANEL_MESSAGE = "👑 Вам доступна панель администратора"
-    HR_KEY = "HR2024"  # Простой HR ключ
+    HR_KEY = "HR2025"
 
     def __init__(self, bot_token: str, backend_url: str):
         self.bot = Bot(token=bot_token)
@@ -94,7 +91,6 @@ class TelegramBotService:
     def _user_keyboard(self):
         kb = InlineKeyboardBuilder()
         kb.button(text="✏️ Редактировать профиль", callback_data="edit_profile")
-        # Добавляем кнопку HR ключа в пользовательском меню для быстрого доступа
         kb.button(text="🔑 HR ключ", callback_data="hr_key")
         return kb.as_markup()
 
@@ -102,12 +98,11 @@ class TelegramBotService:
         """Создает клавиатуру со списком ревью"""
         kb = InlineKeyboardBuilder()
         for review in reviews:
-            # Ограничиваем длину заголовка для кнопки
             title = review['title'][:30] + "..." if len(review['title']) > 30 else review['title']
             kb.button(text=f"📝 {title}", callback_data=f"review_{review['review_id']}")
         
         kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
-        kb.adjust(1)  # По одной кнопке в ряд
+        kb.adjust(1)
         return kb.as_markup()
 
     async def _review_actions_keyboard(self, review_id, review_link):
@@ -123,7 +118,6 @@ class TelegramBotService:
                     kb.button(text=self.BTN_EDIT_REPORT, callback_data=f"{self.CB_EDIT_REPORT}_{review_id}")
         except Exception:
             pass
-        # Новая кнопка просмотра опросов участников
         kb.button(text=self.BTN_VIEW_SURVEYS, callback_data=f"{self.CB_LIST_REVIEW_SURVEYS}_{review_id}")
 
         kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
@@ -149,43 +143,38 @@ class TelegramBotService:
             logger.error(f"Ошибка при проверке прав админа: {e}")
             return False
 
-    # ----------------------------- Регистрация хендлеров ----------------------------- #
     def _register_handlers(self):
         self.dp.message.register(self.start_command, Command("start"))
         self.dp.message.register(self.cancel_command, Command("cancel"))
         self.dp.message.register(self.menu_command, Command("menu"))
 
-        # Callback хендлеры для кнопок
         self.dp.callback_query.register(self.create_review_callback, F.data == self.CB_CREATE_REVIEW)
         self.dp.callback_query.register(self.list_reviews_callback, F.data == self.CB_LIST_REVIEWS)
         self.dp.callback_query.register(self.back_to_main_callback, F.data == self.CB_BACK_TO_MAIN)
         self.dp.callback_query.register(self.hr_key_callback, F.data == "hr_key")
         self.dp.callback_query.register(self.edit_profile_callback, F.data == "edit_profile")
         self.dp.callback_query.register(self.upload_participants_callback, F.data == "upload_participants")
-        # Profile edit callbacks
+
         self.dp.callback_query.register(self.edit_fio_callback, F.data == "edit_fio")
         self.dp.callback_query.register(self.edit_department_callback, F.data == "edit_department")
         
-        # Обработчики для конкретных ревью
         self.dp.callback_query.register(self.review_selected_callback, F.data.startswith("review_"))
         self.dp.callback_query.register(self.view_report_callback, F.data.startswith(self.CB_VIEW_REPORT))
         self.dp.callback_query.register(self.edit_report_callback, F.data.startswith(self.CB_EDIT_REPORT))
         self.dp.callback_query.register(self.list_review_surveys_callback, F.data.startswith(self.CB_LIST_REVIEW_SURVEYS))
 
-        # Обработчики состояний FSM
         self.dp.message.register(self.handle_fio_input, UserStates.waiting_for_fio)
         self.dp.message.register(self.handle_department_input, UserStates.waiting_for_department)
         self.dp.message.register(self.handle_hr_key_input, UserStates.waiting_for_hr_key)
         self.dp.message.register(self.handle_participants_file, UserStates.waiting_for_participants_file)
         self.dp.message.register(self.handle_report_upload, UserStates.waiting_for_report_file)
-        # Edit profile state handlers
+
         self.dp.message.register(self.handle_edit_fio_input, UserStates.editing_fio)
         self.dp.message.register(self.handle_edit_department_input, UserStates.editing_department)
 
     async def start_polling(self):
         await self.dp.start_polling(self.bot)
 
-    # -------------------------------- Команды -------------------------------- #
     async def start_command(self, message: Message, state: FSMContext):
         user_id = message.from_user.id if message.from_user else None
         if not user_id:
@@ -253,7 +242,6 @@ class TelegramBotService:
         user_id = message.from_user.id if message.from_user else None
         if not user_id:
             return
-        # Обеспечим наличие db id пользователя в кэше
         if user_id not in self.user_db_ids:
             try:
                 async with httpx.AsyncClient(timeout=15.0) as client:
@@ -280,7 +268,6 @@ class TelegramBotService:
                 reply_markup=self._user_keyboard()
             )
 
-    # ------------------------------- Обработчики состояний ------------------------------- #
     async def handle_fio_input(self, message: Message, state: FSMContext):
         user_id = message.from_user.id if message.from_user else None
         if not user_id:
@@ -299,11 +286,9 @@ class TelegramBotService:
 
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                # Сначала проверяем, не зарегистрирован ли пользователь уже
                 search_resp = await client.get(self._url(f"/api/user/telegram/{user_id}"))
                 
                 if search_resp.status_code == 200:
-                    # Пользователь уже зарегистрирован
                     user_info = search_resp.json()
                     self.user_db_ids[user_id] = user_info["user_id"]
                     
@@ -320,7 +305,6 @@ class TelegramBotService:
                     await state.clear()
                     return
                 
-                # Если пользователь не найден, сохраняем ФИО и переходим к вводу отдела
                 await state.update_data(
                     first_name=first_name,
                     last_name=last_name,
@@ -344,7 +328,6 @@ class TelegramBotService:
             return
 
         try:
-            # Получаем сохраненные данные ФИО
             data = await state.get_data()
             first_name = data.get('first_name')
             last_name = data.get('last_name')
@@ -355,7 +338,6 @@ class TelegramBotService:
                 await state.clear()
                 return
 
-            # Создаем пользователя с отделом
             async with httpx.AsyncClient(timeout=15.0) as client:
                 user_data = {
                     "first_name": first_name,
@@ -364,7 +346,7 @@ class TelegramBotService:
                     "department": department,
                     "telegram_chat_id": str(user_id),
                     "telegram_username": (message.from_user.username or None),
-                    "can_create_review": False  # По умолчанию не может создавать формы
+                    "can_create_review": False
                 }
                 
                 resp = await client.post(self._url("/api/user"), json=user_data)
@@ -373,7 +355,6 @@ class TelegramBotService:
                     user_info = resp.json()
                     self.user_db_ids[user_id] = user_info["user_id"]
                     
-                    # Создаем клавиатуру с кнопкой HR ключа
                     kb = InlineKeyboardBuilder()
                     kb.button(text="🔑 HR ключ", callback_data="hr_key")
                     kb.button(text="🔙 Главное меню", callback_data=self.CB_BACK_TO_MAIN)
@@ -407,7 +388,6 @@ class TelegramBotService:
         
         if hr_key == self.HR_KEY:
             try:
-                # Обновляем права пользователя
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     update_data = {"can_create_review": True}
                     resp = await client.put(
@@ -437,7 +417,6 @@ class TelegramBotService:
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
             return
-        # Проверим права
         is_admin = await self._is_admin(self.user_db_ids[user_id])
         if not is_admin:
             await callback.answer("⛔ Доступно только HR", show_alert=True)
@@ -493,12 +472,10 @@ class TelegramBotService:
         doc = message.document
         file_name = doc.file_name or "participants"
         try:
-            # Скачать файл
             file = await self.bot.get_file(doc.file_id)
             file_url = f"https://api.telegram.org/file/bot{self.bot.token}/{file.file_path}"
             async with httpx.AsyncClient(timeout=60.0) as client:
                 file_bytes = (await client.get(file_url)).content
-            # Определить формат и распарсить
             rows: list[dict] = []
             if file_name.lower().endswith('.csv'):
                 text = file_bytes.decode('utf-8', errors='ignore')
@@ -515,7 +492,6 @@ class TelegramBotService:
             else:
                 await message.answer("❌ Неподдерживаемый формат. Пришлите .csv или .xlsx")
                 return
-            # Отправка в бэкенд по строкам
             created, skipped = 0, 0
             async with httpx.AsyncClient(timeout=15.0) as client:
                 for r in rows:
@@ -550,7 +526,6 @@ class TelegramBotService:
         finally:
             await state.clear()
 
-    # ------------------------------- Callback обработчики ------------------------------- #
     async def create_review_callback(self, callback: CallbackQuery, state: FSMContext):
         user_id = callback.from_user.id if callback.from_user else None
         if not user_id or user_id not in self.user_db_ids:
@@ -558,7 +533,6 @@ class TelegramBotService:
             return
 
         try:
-            # Создаем ревью без subject_user_id (будет заполнен позже в админке)
             async with httpx.AsyncClient(timeout=15.0) as client:
                 review_data = {
                     "created_by_user_id": self.user_db_ids[user_id],
@@ -602,7 +576,6 @@ class TelegramBotService:
                             reply_markup=self._reviews_list_keyboard(reviews)
                         )
                     else:
-                        # Создаем клавиатуру с кнопкой главного меню
                         kb = InlineKeyboardBuilder()
                         kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
                         await callback.message.edit_text(
@@ -638,11 +611,9 @@ class TelegramBotService:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
             return
 
-        # Извлекаем review_id из callback_data
         review_id = callback.data.replace("review_", "")
         
         try:
-            # Получаем информацию о ревью
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(self._url(f"/api/review/{review_id}"))
                 
@@ -687,18 +658,15 @@ class TelegramBotService:
             return
 
         try:
-            # Получаем информацию о пользователе
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(self._url(f"/api/user/{self.user_db_ids[user_id]}"))
                 
                 if resp.status_code == 200:
                     user_info = resp.json()
                     
-                    # Создаем клавиатуру для редактирования
                     kb = InlineKeyboardBuilder()
                     kb.button(text="✏️ Изменить ФИО", callback_data="edit_fio")
                     kb.button(text="🏢 Изменить отдел", callback_data="edit_department")
-                    # Если нет прав HR, подсказываем получить их
                     if not user_info.get('can_create_review', False):
                         kb.button(text="🔑 Ввести HR ключ", callback_data="hr_key")
                     kb.button(text="🔙 Главное меню", callback_data=self.CB_BACK_TO_MAIN)
@@ -801,7 +769,7 @@ class TelegramBotService:
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
             return
-        # Проверим права
+
         is_admin = await self._is_admin(self.user_db_ids[user_id])
         if not is_admin:
             await callback.answer("⛔ Доступно только HR", show_alert=True)
@@ -824,11 +792,9 @@ class TelegramBotService:
                     await callback.answer()
                     return
 
-                # Для каждой анкеты получаем admin-view ссылку
                 for idx, s in enumerate(surveys, start=1):
                     surv_id = s.get('survey_id')
                     status = s.get('status')
-                    # Получаем admin ссылку (подписанную) на просмотр
                     link_resp = await client.get(self._url(f"/api/surveys/{surv_id}/admin_link"))
                     url = None
                     if link_resp.status_code == 200:
@@ -849,7 +815,6 @@ class TelegramBotService:
         await callback.answer()
 
 
-# Глобальная переменная для хранения экземпляра бота
 telegram_bot_service = None
 
 

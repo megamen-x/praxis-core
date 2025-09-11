@@ -1,3 +1,4 @@
+# app/schemas/question.py
 from typing import Optional, Union, List
 from pydantic import BaseModel, Field
 from src.db.models.question import QuestionType
@@ -25,6 +26,5 @@ class QuestionUpdate(BaseModel):
     position: Optional[int] = Field(default=None, ge=1)
     options: Optional[Union[List[QuestionOptionIn], RangeMeta]] = None
 
-# Dummy body for block-add route (kept for symmetry, can be empty)
 class BlockRefIn(BaseModel):
     pass
