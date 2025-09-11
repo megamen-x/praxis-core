@@ -42,9 +42,10 @@ async def form_page(survey_id: str, request: Request, t: str = Query(...), db: S
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
 
-    # Load review with its questions and question options
+    # Load review with its questions, question options, and subject user
     review = db.query(Review).options(
-        joinedload(Review.questions).joinedload(Question.options)
+        joinedload(Review.questions).joinedload(Question.options),
+        joinedload(Review.subject_user)
     ).filter(Review.review_id == survey.review_id).one()
 
     # Build questions context for template
@@ -69,6 +70,8 @@ async def form_page(survey_id: str, request: Request, t: str = Query(...), db: S
             "meta": meta,
         })
 
+    subject_name = f"{review.subject_user.last_name} {review.subject_user.first_name} {review.subject_user.middle_name or ''}".strip()
+
     random_bg_img = randint(1, 5)
     response = templates.TemplateResponse(
         "form.html",
@@ -76,6 +79,7 @@ async def form_page(survey_id: str, request: Request, t: str = Query(...), db: S
             "request": request,
             "survey": survey,
             "review": review,
+            "subject_name": subject_name,
             "background_image": f'assets/site_bg_{random_bg_img}.png',
             "questions": questions,
             "api_url": f"/api/surveys/{survey_id}/answers?t={t}",
@@ -86,6 +90,72 @@ async def form_page(survey_id: str, request: Request, t: str = Query(...), db: S
     response.set_cookie("survey_csrf", csrf, samesite="lax")
     return response
 
+
+@router.get("/admin/surveys/{survey_id}", response_class=HTMLResponse)
+async def survey_admin_readonly_page(survey_id: str, request: Request, t: str = Query(...), db: Session = Depends(get_db)):
+    payload = verify_token(t)
+    if not payload or payload.get("role") != "admin" or payload.get("sub") != survey_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    survey = db.get(Survey, survey_id)
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+
+    review = db.query(Review).options(
+        joinedload(Review.questions).joinedload(Question.options),
+        joinedload(Review.subject_user)
+    ).filter(Review.review_id == survey.review_id).one()
+
+    # Собираем ответы по вопросам
+    answers = db.scalars(
+        select(Answer).where(Answer.survey_id == survey_id)
+    ).all()
+    # Индексация ответов по question_id
+    by_q: dict[str, dict] = {}
+    for a in answers:
+        by_q[a.question_id] = {
+            "response_text": a.response_text,
+            "selected_option_ids": [sel.option_id for sel in db.scalars(
+                select(AnswerSelection).where(AnswerSelection.answer_id == a.answer_id)
+            ).all()]
+        }
+
+    questions_ctx = []
+    for q in review.questions:
+        if q.question_type in (QuestionType.radio, QuestionType.checkbox):
+            opts = [{"option_id": o.option_id, "option_text": o.option_text} for o in q.options]
+            meta = {"options": opts}
+        elif q.question_type == QuestionType.range_slider:
+            try:
+                meta = json.loads(q.meta_json) if q.meta_json else {"min": 1, "max": 10, "step": 1}
+            except Exception:
+                meta = {"min": 1, "max": 10, "step": 1}
+        else:
+            meta = {}
+
+        ans = by_q.get(q.question_id, {"response_text": None, "selected_option_ids": []})
+        questions_ctx.append({
+            "question_id": q.question_id,
+            "question_text": q.question_text,
+            "question_type": q.question_type.value,
+            "is_required": q.is_required,
+            "meta": meta,
+            "answer": ans,
+        })
+
+    subject_name = f"{review.subject_user.last_name} {review.subject_user.first_name} {review.subject_user.middle_name or ''}".strip()
+    random_bg_img = randint(1, 5)
+    return templates.TemplateResponse(
+        "survey_readonly.html",
+        {
+            "request": request,
+            "survey": survey,
+            "review": review,
+            "subject_name": subject_name,
+            "background_image": f'assets/site_bg_{random_bg_img}.png',
+            "questions": questions_ctx,
+        },
+    )
 
 @router.post("/api/surveys/{survey_id}/answers")
 async def save_answers(

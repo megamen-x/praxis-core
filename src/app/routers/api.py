@@ -380,6 +380,17 @@ def get_surveys(review_id: str, db: Session = Depends(get_db)):
     
     return [{"survey_id": s.survey_id, "evaluator_user_id": s.evaluator_user_id, "status": s.status.value} for s in surveys]
 
+
+@router.get("/api/surveys/{survey_id}/admin_link")
+async def get_survey_admin_link(survey_id: str, db: Session = Depends(get_db)):
+    """Сгенерировать ссылку для HR на read-only просмотр опроса."""
+    survey = db.get(Survey, survey_id)
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    t = sign_token({"role": "admin", "sub": survey_id}, ttl_sec=settings.ADMIN_LINK_TTL)
+    url = f"/admin/surveys/{survey_id}?t={t}"
+    return {"url": url}
+
 @router.post("/api/reviews/{review_id}/surveys")
 # _: None = Depends(require_bot_auth)
 def create_surveys(
@@ -508,15 +519,33 @@ async def llm_aggregation(
     }
     feedback = ''
 
-    for i, (_, v) in enumerate(grouped_text_answers.items()):
-        feedback += f"Feedback from reviewer №{i+1}: \n"
+    for i, (survey_id, v) in enumerate(grouped_text_answers.items()):
+        reviewer_label = f"R{i+1}"
+        if review and review.anonymity is False:
+            evaluator_user_id = survey_id_to_evaluator.get(survey_id)
+            evaluator_user = db.get(User, evaluator_user_id)
+            parts = [
+                evaluator_user.last_name,
+                evaluator_user.first_name,
+                evaluator_user.middle_name,
+            ]
+            reviewer_name = " ".join([p for p in parts if p])
+            if reviewer_name:
+                reviewer_label = reviewer_name
+                
+        feedback += f"Feedback from {reviewer_label}: \n"
         feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['response_texts']])
         feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['option_texts']])
         feedback += "\n"
 
+    report = db.execute(select(Report).where(Report.review_id == review_id)).scalar()
+    prompt_to_use = report.prompt if report.prompt else SIDES_EXTRACTING_PROMPT
+    if "{feedback}" not in prompt_to_use:
+        prompt_to_use = prompt_to_use + "\n\nFeedback from managers:\n\n{feedback}"
+
     log = [
         {"role": "system", "content": BASE_PROMPT_WO_TASK},
-        {"role": "user", "content": SIDES_EXTRACTING_PROMPT.format(feedback=feedback)}
+        {"role": "user", "content": prompt_to_use.format(feedback=feedback)}
     ]
 
     completion = await get_so_completion(
@@ -558,11 +587,7 @@ async def llm_aggregation(
         quotes_layout="inline",
         write_intermediate_html=True
     )
-    # upsert Report record with file_path
-    report = db.execute(select(Report).where(Report.review_id == review_id)).scalar_one_or_none()
-    if not report:
-        report = Report(review_id=review_id)
-        db.add(report)
+    # Обновляем Report record с file_path
     report.file_path = path_to_file
     db.commit()
     db.refresh(report)
