@@ -3,7 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Text, Integer, Enum, Boolean, ForeignKey, DateTime, UniqueConstraint, func
 from src.db import Base
 from src.db.models.user import User
-from src.db.models.question import QuestionType  # or move QuestionType to a shared module
+from src.db.models.question import QuestionType
 import uuid
 
 class QuestionTemplate(Base):

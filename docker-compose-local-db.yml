@@ -1,0 +1,12 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app
+    environment:
+      - DATABASE_URL=postgresql://{user}:{password}@host.docker.internal:{port}/{db_name} # Укажите свои параметры
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

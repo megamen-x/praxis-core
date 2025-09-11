@@ -1,11 +1,11 @@
+# app/schemas/answer.py
 from pydantic import BaseModel
 from typing import List
 
-# Новая, более строгая схема для сохранения ответа
 class AnswerIn(BaseModel):
     question_id: str
-    response_text: str | None = None # Для text/textarea
-    selected_option_ids: List[str] | None = None # Для radio/checkbox
+    response_text: str | None = None
+    selected_option_ids: List[str] | None = None
 
 class SaveAnswersIn(BaseModel):
     csrf_token: str

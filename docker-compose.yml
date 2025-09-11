@@ -6,7 +6,25 @@ services:
     volumes:
       - ./app:/app
     environment:
-      - DATABASE_URL=postgresql://{user}:{password}@host.docker.internal:{port}/{db_name}
+      - DATABASE_URL=postgresql://postgres:root@db:5432/praxis_db
+    depends_on:
+      - db
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=praxis_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5435:5432"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

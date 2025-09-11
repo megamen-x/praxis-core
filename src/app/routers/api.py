@@ -156,7 +156,6 @@ async def update_user(user_id: str, user_data: UserUpdate, db: Session = Depends
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Проверяем уникальность email если он указан
     if user_data.email and user_data.email != user.email:
         existing_user = db.execute(
             select(User).where(User.email == user_data.email)
@@ -166,7 +165,6 @@ async def update_user(user_id: str, user_data: UserUpdate, db: Session = Depends
                 status_code=400, 
                 detail="User with this email already exists"
             )
-    # Проверяем уникальность telegram_username если он указан
     if user_data.telegram_username and user_data.telegram_username != user.telegram_username:
         existing_user = db.execute(
             select(User).where(User.telegram_username == user_data.telegram_username)
@@ -177,7 +175,6 @@ async def update_user(user_id: str, user_data: UserUpdate, db: Session = Depends
                 detail="User with this telegram_username already exists"
             )
     
-    # Обновляем только переданные поля
     update_data = user_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(user, field, value)
@@ -208,12 +205,10 @@ async def get_all_users(db: Session = Depends(get_db)):
 @router.get("/api/user/{user_id}/reports", response_model=List[ReportWithReviewOut])
 async def get_user_reports(user_id: str, db: Session = Depends(get_db)):
     """Получить отчеты по конкретному сотруднику (subject_user_id)"""
-    # Проверяем существование пользователя
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Получаем все отчеты для пользователя через Review
     reports = db.execute(
         select(Report, Review, User)
         .join(Review, Report.review_id == Review.review_id)
@@ -245,12 +240,10 @@ async def get_user_reports(user_id: str, db: Session = Depends(get_db)):
 @router.get("/api/user/{user_id}/reviews", response_model=List[ReviewOut])
 async def get_user_reviews(user_id: str, db: Session = Depends(get_db)):
     """Получить список Review по created_by_user_id"""
-    # Проверяем существование пользователя
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Получаем все ревью для пользователя
     reviews = db.scalars(
         select(Review)
         .where(Review.created_by_user_id == user_id)
@@ -330,7 +323,6 @@ async def get_review(review_id: str, db: Session = Depends(get_db)):
     )
 
 @router.post("/api/review/create", response_model=ReviewOut)
-# , _: None = Depends(require_bot_auth)
 def create_review(
     payload: CreateReviewIn, request: Request, db: Session = Depends(get_db)
 ):
@@ -339,7 +331,6 @@ def create_review(
     if not created_by:
         raise HTTPException(status_code=404, detail=f"User not found: {payload.created_by_user_id}")
     
-    # Проверяем subject_user_id только если он предоставлен
     subject = None
     if payload.subject_user_id:
         subject = db.get(User, payload.subject_user_id)
@@ -392,7 +383,6 @@ async def get_survey_admin_link(survey_id: str, db: Session = Depends(get_db)):
     return {"url": url}
 
 @router.post("/api/reviews/{review_id}/surveys")
-# _: None = Depends(require_bot_auth)
 def create_surveys(
     review_id: str, payload: CreateSurveysIn, request: Request, db: Session = Depends(get_db), 
 ):
@@ -406,7 +396,6 @@ def create_surveys(
         db.commit()
         t = sign_token({"role": "respondent", "sub": s.survey_id}, ttl_sec=settings.RESPONDENT_LINK_TTL)
         s.survey_link = f"/form/{s.survey_id}?t={t}"
-        # Инициализация notification_call: середина интервала [start_at, end_at]
         if review.start_at and review.end_at:
             s.notification_call = review.start_at + (review.end_at - review.start_at) / 2
         else:
@@ -429,20 +418,17 @@ def delete_survey(survey_id: str, db: Session = Depends(get_db)):
 async def llm_aggregation(
     review_id: str = Form(...), db: Session = Depends(get_db)
 ):
-    # Fetch surveys with the given review_id
     survey_ids = db.scalars(
         select(Survey.survey_id)
         .where(Survey.review_id == review_id)
     ).all()
 
-    # Map survey_id -> evaluator_user_id for fast access
     surveys = db.execute(
         select(Survey.survey_id, Survey.evaluator_user_id)
         .where(Survey.survey_id.in_(survey_ids))
     ).all()
     survey_id_to_evaluator = {s_id: eval_uid for s_id, eval_uid in surveys}
 
-    # Get review to compare subject_user_id for self-evaluation
     review = db.get(Review, review_id)
 
     subject_first_name = review.subject_user.first_name
@@ -485,7 +471,6 @@ async def llm_aggregation(
                     question_text, answer.response_text
                 ])
         else:
-            # Fetch option_texts for answers with empty response_text
             option_texts = db.scalars(
                 select(QuestionOption.option_text, Question.question_text)
                 .join(AnswerSelection, AnswerSelection.option_id == QuestionOption.option_id)
@@ -587,7 +572,6 @@ async def llm_aggregation(
         quotes_layout="inline",
         write_intermediate_html=True
     )
-    # Обновляем Report record с file_path
     report.file_path = path_to_file
     db.commit()
     db.refresh(report)
@@ -625,12 +609,10 @@ async def download_review_report(review_id: str, db: Session = Depends(get_db)):
 
 @router.post("/api/reviews/{review_id}/report/upload", response_model=ReportOut)
 async def upload_review_report(review_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    # ensure review exists
     review = db.get(Review, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
-    # store uploaded file into out/ dir
     import os
     os.makedirs("out", exist_ok=True)
     filename = f"review-{review_id}-{file.filename}"
@@ -638,7 +620,6 @@ async def upload_review_report(review_id: str, file: UploadFile = File(...), db:
     with open(dest_path, "wb") as f:
         f.write(await file.read())
 
-    # upsert Report
     report = db.execute(select(Report).where(Report.review_id == review_id)).scalar_one_or_none()
     if not report:
         report = Report(review_id=review_id)

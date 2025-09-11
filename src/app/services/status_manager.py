@@ -117,11 +117,9 @@ async def _process_start_reviews(db: Session, now: datetime) -> int:
         review.status = ReviewStatus.in_progress
 
         for survey in review.surveys:
-            # Переводим опросы в in_progress, если еще не начаты
             if survey.status == SurveyStatus.not_started:
                 survey.status = SurveyStatus.in_progress
 
-            # Готовим отправку ссылок участникам
             evaluator = survey.evaluator
             if not evaluator:
                 continue
@@ -171,12 +169,10 @@ async def _process_end_reviews(db: Session, now: datetime) -> int:
     for review in reviews:
         review.status = ReviewStatus.completed
 
-        # Все незавершенные опросы помечаем как expired
         for survey in review.surveys:
             if survey.status in (SurveyStatus.not_started, SurveyStatus.in_progress):
                 survey.status = SurveyStatus.expired
 
-        # Сообщение создателю ревью
         creator = review.created_by
         if creator:
             chat_id = creator.telegram_chat_id
@@ -268,7 +264,6 @@ async def _process_hr_day_before_end(db: Session, now: datetime) -> int:
     За 1 день до окончания ревью уведомить HR (создателя), если есть незавершенные опросы.
     Отправляется однократно, когда `review.end_at` ровно через 1 день от текущего времени (окно по минуте).
     """
-    # Рассчитываем минутное окно для момента now + 1 день
     target = now + timedelta(days=1)
     start = target.replace(second=0, microsecond=0)
     end = start + timedelta(minutes=1)
@@ -293,14 +288,12 @@ async def _process_hr_day_before_end(db: Session, now: datetime) -> int:
     messages: list[tuple[int, str, str]] = []
 
     for review in reviews:
-        # Собираем всех оценщиков, не завершивших опрос
         pending = [s for s in review.surveys if s.status in (SurveyStatus.not_started, SurveyStatus.in_progress)]
         if not pending:
             continue
         creator = review.created_by
         if not creator or not creator.telegram_chat_id:
             continue
-        # Сформировать список имён
         names: list[str] = []
         for s in pending:
             ev = s.evaluator
@@ -347,7 +340,6 @@ async def run_status_manager_loop():
     Фоновая задача: запускать process_tick каждую минуту (по границам минут).
     """
     logger.info("Status manager loop started")
-    # Небольшая задержка, чтобы дать боту подняться
     await asyncio.sleep(0.5)
 
     while True:
