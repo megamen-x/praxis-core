@@ -751,7 +751,7 @@ class TelegramBotService:
                     url = None
                     if link_resp.status_code == 200:
                         url = self._url(link_resp.json().get('url', ''))
-                    btn_text = f"Опрос {idx} — {status}"
+                    btn_text = f"Опрос {idx}"
                     if url:
                         kb.button(text=btn_text, url=url)
                     else:
