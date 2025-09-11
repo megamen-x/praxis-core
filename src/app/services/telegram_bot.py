@@ -28,6 +28,8 @@ class UserStates(StatesGroup):
     waiting_for_hr_key = State()
     waiting_for_participants_file = State()
     waiting_for_report_file = State()
+    editing_fio = State()
+    editing_department = State()
 
 
 class TelegramBotService:
@@ -160,6 +162,9 @@ class TelegramBotService:
         self.dp.callback_query.register(self.hr_key_callback, F.data == "hr_key")
         self.dp.callback_query.register(self.edit_profile_callback, F.data == "edit_profile")
         self.dp.callback_query.register(self.upload_participants_callback, F.data == "upload_participants")
+        # Profile edit callbacks
+        self.dp.callback_query.register(self.edit_fio_callback, F.data == "edit_fio")
+        self.dp.callback_query.register(self.edit_department_callback, F.data == "edit_department")
         
         # Обработчики для конкретных ревью
         self.dp.callback_query.register(self.review_selected_callback, F.data.startswith("review_"))
@@ -173,6 +178,9 @@ class TelegramBotService:
         self.dp.message.register(self.handle_hr_key_input, UserStates.waiting_for_hr_key)
         self.dp.message.register(self.handle_participants_file, UserStates.waiting_for_participants_file)
         self.dp.message.register(self.handle_report_upload, UserStates.waiting_for_report_file)
+        # Edit profile state handlers
+        self.dp.message.register(self.handle_edit_fio_input, UserStates.editing_fio)
+        self.dp.message.register(self.handle_edit_department_input, UserStates.editing_department)
 
     async def start_polling(self):
         await self.dp.start_polling(self.bot)
@@ -712,6 +720,80 @@ class TelegramBotService:
             await callback.message.edit_text("❌ Произошла ошибка. Попробуйте позже.")
         
         await callback.answer()
+
+    async def edit_fio_callback(self, callback: CallbackQuery, state: FSMContext):
+        """Начать изменение ФИО"""
+        user_id = callback.from_user.id if callback.from_user else None
+        if not user_id or user_id not in self.user_db_ids:
+            await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
+            return
+        await state.set_state(UserStates.editing_fio)
+        await callback.message.edit_text("✏️ Введите новое ФИО в формате 'Фамилия Имя Отчество' (отчество опционально).\nИспользуйте /cancel для отмены.")
+        await callback.answer()
+
+    async def edit_department_callback(self, callback: CallbackQuery, state: FSMContext):
+        """Начать изменение отдела"""
+        user_id = callback.from_user.id if callback.from_user else None
+        if not user_id or user_id not in self.user_db_ids:
+            await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
+            return
+        await state.set_state(UserStates.editing_department)
+        await callback.message.edit_text("🏢 Введите новый отдел.\nИспользуйте /cancel для отмены.")
+        await callback.answer()
+
+    async def handle_edit_fio_input(self, message: Message, state: FSMContext):
+        """Обновление ФИО существующего пользователя"""
+        user_id = message.from_user.id if message.from_user else None
+        if not user_id or user_id not in self.user_db_ids:
+            await message.answer("❌ Сначала зарегистрируйтесь командой /start")
+            await state.clear()
+            return
+        fio_text = (message.text or "").strip()
+        parts = fio_text.split()
+        if len(parts) < 2:
+            await message.answer("❌ Пожалуйста, введите как минимум Фамилию и Имя.")
+            return
+        last_name = parts[0]
+        first_name = parts[1]
+        middle_name = parts[2] if len(parts) >= 3 else None
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                update = {"first_name": first_name, "last_name": last_name, "middle_name": middle_name}
+                resp = await client.put(self._url(f"/api/user/{self.user_db_ids[user_id]}"), json=update)
+                if resp.status_code == 200:
+                    await message.answer("✅ ФИО обновлено.", reply_markup=self._user_keyboard())
+                else:
+                    await message.answer("❌ Не удалось обновить ФИО. Попробуйте позже.")
+        except Exception as e:
+            logger.error(f"Ошибка обновления ФИО: {e}")
+            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+        finally:
+            await state.clear()
+
+    async def handle_edit_department_input(self, message: Message, state: FSMContext):
+        """Обновление отдела существующего пользователя"""
+        user_id = message.from_user.id if message.from_user else None
+        if not user_id or user_id not in self.user_db_ids:
+            await message.answer("❌ Сначала зарегистрируйтесь командой /start")
+            await state.clear()
+            return
+        department = (message.text or "").strip()
+        if not department:
+            await message.answer("❌ Пожалуйста, укажите отдел.")
+            return
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                update = {"department": department}
+                resp = await client.put(self._url(f"/api/user/{self.user_db_ids[user_id]}"), json=update)
+                if resp.status_code == 200:
+                    await message.answer("✅ Отдел обновлён.", reply_markup=self._user_keyboard())
+                else:
+                    await message.answer("❌ Не удалось обновить отдел. Попробуйте позже.")
+        except Exception as e:
+            logger.error(f"Ошибка обновления отдела: {e}")
+            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+        finally:
+            await state.clear()
 
     async def list_review_surveys_callback(self, callback: CallbackQuery, state: FSMContext):
         """Показать список опросов для ревью с ссылками на просмотр."""
