@@ -3,13 +3,21 @@
 <h1 class="mono mb-3">{{ review.title }}</h1>
 <p class="mb-4">{{ review.description }}</p>
 
-{% if subject_name %}
+{% if subject_name or evaluator_name %}
 <div class="subject-info mb-4">
-  <label class="form-label mono" style="margin-bottom: 0rem;">Субъект оценки: {{ subject_name }}</label>
-  <div class="text-muted small">Статус опроса: {{ survey.status.value }}</div>
-  {% if survey.submitted_at %}
-    <div class="text-muted small">Отправлен: {{ survey.submitted_at }}</div>
+  {% if subject_name %}
+  <label class="form-label mono" style="margin-bottom: 0rem; font-weight: 500;"><strong>Субъект оценки: </strong>{{ subject_name }}</label>
   {% endif %}
+  <div style="margin: 10px;">
+    {% if evaluator_name %}
+      <div class="sub-text"><strong>Ревьюер: </strong> {{ evaluator_name }}</div>
+    {% endif %}
+      <div class="sub-text"><strong>Статус опроса:</strong> {{ survey.status.value }}</div>
+    {% if survey.submitted_at %}
+      <div class="sub-text"><strong>Отправлен:</strong> {{ survey.submitted_at }}</div>
+    {% endif %}
+  </div>
+  
 {% endif %}
 
 <div class="alert alert-warning" role="alert">

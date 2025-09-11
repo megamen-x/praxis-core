@@ -142,8 +142,13 @@ async def survey_admin_readonly_page(survey_id: str, request: Request, t: str = 
             "meta": meta,
             "answer": ans,
         })
-
     subject_name = f"{review.subject_user.last_name} {review.subject_user.first_name} {review.subject_user.middle_name or ''}".strip()
+    if review.anonymity:
+        evaluator_name = "Аноним"
+    else:
+        evaluator_name = " ".join(
+            [p for p in [survey.evaluator.last_name, survey.evaluator.first_name, survey.evaluator.middle_name] if p]
+        )
     random_bg_img = randint(1, 5)
     return templates.TemplateResponse(
         "survey_readonly.html",
@@ -152,6 +157,7 @@ async def survey_admin_readonly_page(survey_id: str, request: Request, t: str = 
             "survey": survey,
             "review": review,
             "subject_name": subject_name,
+            "evaluator_name": evaluator_name,
             "background_image": f'assets/site_bg_{random_bg_img}.png',
             "questions": questions_ctx,
         },
