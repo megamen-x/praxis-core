@@ -520,7 +520,7 @@ async def llm_aggregation(
     feedback = ''
 
     for i, (survey_id, v) in enumerate(grouped_text_answers.items()):
-        reviewer_label = f"R{i+1}"
+        reviewer_label = f"Reviewer {i+1}"
         if review and review.anonymity is False:
             evaluator_user_id = survey_id_to_evaluator.get(survey_id)
             evaluator_user = db.get(User, evaluator_user_id)

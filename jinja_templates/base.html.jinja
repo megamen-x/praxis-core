@@ -7,7 +7,8 @@
 - weak_sides:   list[ { "side_description": str, "proofs": list[str] } ]
 - ambiguous_sides: list[ { "side_description": str } ]
 - recommendations: list[ { "side_description": str, "brief_explanation": str, "recommendation": str } ]
-- visualization_url: str (URL картинки)
+- visualization_url: str | None  (URL картинки; необязательное)
+- show_visualization: bool       (необязательное; по умолчанию true)
 - quotes_layout: 'inline' | 'sublist'  (необязательное; по умолчанию 'inline')
 #}
 <!DOCTYPE html>
@@ -68,7 +69,7 @@
       left: 0;
     }
 
-    /* Подсписки — сдвинуты левее на 1.25 см и с маркером ✧ */
+    /* Подсписки — сдвинуты левее и с маркером ✧ */
     ul.sublist {
       margin: 6pt 0 6pt 0;
       padding-left: 0;
@@ -248,11 +249,13 @@
   </ul>
   {% endif %}
 
-  <!-- Визуализация -->
-  <h2>Визуализация оценки {{ mark_name }}</h2>
-  <div class="viz">
-    <img src="{{ visualization_url }}" alt="Визуализация оценки {{ mark_name }}">
-  </div>
+  {# Визуализация: выводим ТОЛЬКО если есть URL и флаг не выключен #}
+  {% if (show_visualization | default(true)) and visualization_url %}
+    <h2>Визуализация оценки {{ mark_name }}</h2>
+    <div class="viz">
+      <img src="{{ visualization_url }}" alt="Визуализация оценки {{ mark_name }}">
+    </div>
+  {% endif %}
 
 </body>
 </html>

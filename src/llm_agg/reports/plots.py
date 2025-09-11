@@ -16,6 +16,17 @@ def _nice_max(x: float) -> float:
     return math.ceil(x / mag) * mag
 
 def _two_lines(s: str, width: int) -> str:
+    """
+    Wrap a label into at most two lines without breaking words.
+
+    Uses textwrap.wrap with break_long_words=False so words are not split.
+    The first line is constrained by `width`; any remaining words form the
+    second line. If no wrap is needed, the original string is returned.
+
+    Parameters:
+        s (str): Source label text.
+        width (int): Target maximum characters for the first line.
+    """
     parts = wrap(s, width=width, break_long_words=False)
     if len(parts) <= 1:
         return s
@@ -34,10 +45,29 @@ def plot_180_radar(
     label_radius: float = 1.12,
     value_offset_pts: int = 12
 ):
-    print(f'dict{pairs_self}')
+    """Plot a single‑series (180°) radar chart and save it as an image.
+
+    Values are normalized to [0, 1] using `(vmin, vmax)` if provided; otherwise
+    `vmin=0` and `vmax` is computed via `_nice_max(max(values))`. Ring labels
+    reflect the original (unnormalized) scale. Labels can be wrapped, and
+    numeric values can be drawn near markers with configurable offset.
+
+    Parameters:
+        pairs_self (dict[str, float]): Mapping {metric: value}. Expected ≥ 3 metrics.
+        save_to (str): Output file path (e.g., PNG).
+        title (str | None): Figure title; pass None to omit.
+        value_range (tuple[float, float] | None): Explicit (vmin, vmax). `vmax` must be > `vmin`.
+        show_values (bool): Whether to render numeric values near points.
+        dpi (int): Figure DPI.
+        wrap_width (int): Max characters before wrapping metric labels into two lines.
+        top_area (float): Top subplot margin (0..1).
+        title_y (float): Title vertical position in figure coordinates.
+        label_radius (float): Radial position of metric labels (relative to axis radius).
+        value_offset_pts (int): Offset (in points) of numeric labels from markers.
+    """
     labels = list(pairs_self.keys())
     values = np.asarray(list(pairs_self.values()), dtype=float)
-    print(f'val:{values}')
+
     fig_bg = "#FBFCFE"
     ax_bg = "#F7F9FC"
     grid_c = "#D6DEE6"
@@ -126,8 +156,27 @@ def plot_360_radar(
     value_offset_mgr: int = 12,
     value_offset_self: int = -16,
 ):
-    print(f'{pairs_self=}, {pairs_mgr=}')
-    print(f'{pairs_self.keys()=}, {pairs_mgr.keys()=}')
+    """Plot a dual‑series (360°) radar chart and save it as an image.
+
+    Both dictionaries must contain the same label set (order is taken from
+    `pairs_mgr`). Values are normalized to [0, 1] using `(vmin, vmax)` if
+    provided; otherwise `vmin=0` and `vmax` is computed from the combined
+    maximum of both series via `_nice_max`. Two filled polygons are drawn,
+    a legend is added, and optional numeric labels can be placed near points
+    with separate offsets for manager and self series.
+
+    Parameters:
+        pairs_self (dict[str, float]): Self assessment {metric: value}, ≥ 3 metrics.
+        pairs_mgr (dict[str, float]): Manager assessment {metric: value}, same label set, ≥ 3 metrics.
+        save_to (str): Output file path (e.g., PNG).
+        title (str | None): Figure title; pass None to omit.
+        value_range (tuple[float, float] | None): Explicit (vmin, vmax). `vmax` must be > `vmin`.
+        dpi (int): Figure DPI. `wrap_width`, `top_area`, `bottom_area`, `title_y`, `label_radius`
+            adjust label wrapping and layout spacing.
+        show_values (bool): Whether to draw numeric values near markers.
+        value_offset_mgr (int): Offset (points) for manager value labels.
+        value_offset_self (int): Offset (points) for self value labels (negative draws below).
+    """
     labels_s = pairs_self.keys()
     labels_m = pairs_mgr.keys()
     
