@@ -280,7 +280,23 @@
     ```
     uvicorn src.app.main:app --reload --host 0.0.0.0 --port 8000
     ```
+
 </details> 
+
+<details>
+  <summary> <strong><i>Запуск при помощи docker compose</i></strong> </summary>
+
+  - Выполните в терминале следующие команды:
+  
+    - Если у вас нет базы данных PostgreSQL, запустите код следующим образом, предварительно указав в файле ``docker-compose.yml`` имя пользователя, пароль, порт и название базы данных:
+    ```
+    docker-compose up
+    ```
+    - Если у вас уже создана и настроена локальная база данных PostgreSQL, запустите код через следующую команду. Укажите в файле ``docker-compose-local-db.yml`` корректный URI-путь до базы данных. 
+    ```
+    docker-compose -f docker-compose-local-db.yml up
+    ```
+</details>
 
 <!-- Additional instructions for installation and use can be found [here](https://github.com/megamen-x/praxis-core/blob/main/readme.md) and [there](https://github.com/megamen-x/praxis-core/blob/main/readme.md) -->
 
