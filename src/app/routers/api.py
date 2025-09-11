@@ -508,8 +508,21 @@ async def llm_aggregation(
     }
     feedback = ''
 
-    for i, (_, v) in enumerate(grouped_text_answers.items()):
-        feedback += f"Feedback from reviewer №{i+1}: \n"
+    for i, (survey_id, v) in enumerate(grouped_text_answers.items()):
+        reviewer_label = f"R{i+1}"
+        if review and review.anonymity is False:
+            evaluator_user_id = survey_id_to_evaluator.get(survey_id)
+            evaluator_user = db.get(User, evaluator_user_id)
+            parts = [
+                evaluator_user.last_name,
+                evaluator_user.first_name,
+                evaluator_user.middle_name,
+            ]
+            reviewer_name = " ".join([p for p in parts if p])
+            if reviewer_name:
+                reviewer_label = reviewer_name
+                
+        feedback += f"Feedback from {reviewer_label}: \n"
         feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['response_texts']])
         feedback += "\n".join([f"{item[0]}: {item[1]}" for item in v['option_texts']])
         feedback += "\n"
