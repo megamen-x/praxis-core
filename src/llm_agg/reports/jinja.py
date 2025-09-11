@@ -217,25 +217,26 @@ def create_report(
     self_scores = numeric_values.get("self-esteem", {})
     mgr_scores = numeric_values.get("manage-esteem", {})
 
-    if not isinstance(mgr_scores, dict) or len(mgr_scores) < 3:
-        plot_uri = None
-    elif self_scores is not None and (not isinstance(self_scores, dict) or len(mgr_scores) < 3):
-        plot_uri = None
-    else:
+    have_self = isinstance(self_scores, dict) and len(self_scores) >= 3
+    have_mgr  = isinstance(mgr_scores, dict)  and len(mgr_scores)  >= 3
+
+    auto_mark_name = "360°" if have_self else "180°"
+
+    plot_uri = None
+    if have_mgr:
         plot_path = _ensure_plot_path(visualization_url, employee_name)
-        if len(self_scores) > 0:
+
+        if have_self:
             plot_360_radar(
                 pairs_self=self_scores,
                 pairs_mgr=mgr_scores,
                 save_to=str(plot_path),
             )
-            auto_mark_name = "360°"
         else:
             plot_180_radar(
                 pairs_self=mgr_scores,
                 save_to=str(plot_path),
             )
-            auto_mark_name = "180°"
 
         try:
             plot_uri = plot_path.resolve().as_uri()
