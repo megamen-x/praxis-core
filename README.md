@@ -272,9 +272,10 @@
     source .venv/bin/activate
     pip install -e .
     ```
-    - В файле .env добавьте привязку к PostgreSQL:
+    - В файле .env добавьте привязку к PostgreSQL и добавите openai api key:
     ```
     DATABASE_URL=postgresql://praxis_user:your_secure_password@localhost:5432/praxis_db
+    OPENAI_API_KEY=...
     ```
     - После окончания предыдущих этапов можно запустить сервер:
     ```
