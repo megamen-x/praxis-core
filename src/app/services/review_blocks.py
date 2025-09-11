@@ -1,3 +1,8 @@
+"""Operations with question blocks: adding a block to the review.
+
+It contains the `add_block_to_review` function, which transfers questions and options from
+the block template to a specific review with the correct position.
+"""
 # app/services/review_block.py
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
@@ -6,6 +11,22 @@ from src.db.models.question import Question, QuestionOption
 from src.db.models.question_bank import QuestionBlock
 
 def add_block_to_review(session: Session, review_id: str, block_id: str) -> int:
+    """Add all the questions from the block to the review.
+
+    Copies questions and their options from the `block_id` block template to the `review_id` review,
+    putting down the correct positions following the already existing questions.
+
+    Args:
+        session: The database session.
+        review_id: The ID of the review receiver.
+        block_id: The identifier of the block with the question templates.
+
+    Returns:
+        int: The number of questions added.
+
+    Raises:
+        ValueError: If the review or block is not found.
+    """
     review = session.get(Review, review_id)
     block = session.get(QuestionBlock, block_id)
     if not review or not block:

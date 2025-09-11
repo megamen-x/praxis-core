@@ -1,3 +1,8 @@
+"""Telegram bot service on aiogram.
+
+Implements registration, menus, work with reviews, uploading participants and reports,
+as well as auxiliary keyboards and rights verification.
+"""
 # app/services/telegram_bot.py
 import csv, io
 import pandas as pd
@@ -74,9 +79,18 @@ class TelegramBotService:
         self._register_handlers()
 
     def _url(self, path: str) -> str:
+        """Build an absolute URL to the backend.
+
+        Args:
+            path: Path (with or without a leading slash).
+
+        Returns:
+            str: Full URL.
+        """
         return self.backend_url.rstrip("/") + "/" + path.lstrip("/")
 
     def _admin_keyboard(self):
+        """The administrator's keyboard (HR) with basic actions."""
         kb = InlineKeyboardBuilder()
         kb.button(text=self.BTN_CREATE_REVIEW, callback_data=self.CB_CREATE_REVIEW)
         kb.button(text=self.BTN_LIST_REVIEWS, callback_data=self.CB_LIST_REVIEWS)
@@ -86,13 +100,21 @@ class TelegramBotService:
         return kb.as_markup()
 
     def _user_keyboard(self):
+        """A regular user's keyboard."""
         kb = InlineKeyboardBuilder()
         kb.button(text="✏️ Редактировать профиль", callback_data="edit_profile")
         kb.button(text="🔑 HR ключ", callback_data="hr_key")
         return kb.as_markup()
 
     def _reviews_list_keyboard(self, reviews):
-        """Создает клавиатуру со списком ревью"""
+        """Creates a keyboard with a list of reviews.
+
+        Args:
+            reviews: A list of review objects (dict).
+
+        Returns:
+            InlineKeyboardMarkup: Keyboard with a list.
+        """
         kb = InlineKeyboardBuilder()
         for review in reviews:
             title = review['title'][:30] + "..." if len(review['title']) > 30 else review['title']
@@ -103,7 +125,15 @@ class TelegramBotService:
         return kb.as_markup()
 
     async def _review_actions_keyboard(self, review_id, review_link):
-        """Создает клавиатуру с действиями для конкретного ревью."""
+        """Creates a keyboard with actions for a specific review.
+
+        Args:
+            review_id: The ID of the review.
+            review_link: A relative link to the review admin area.
+
+        Returns:
+            InlineKeyboardMarkup: Action keyboard.
+        """
         kb = InlineKeyboardBuilder()
         kb.button(text=self.BTN_EDIT_REVIEW, url=self._url(review_link))
         try:
@@ -122,6 +152,14 @@ class TelegramBotService:
         return kb.as_markup()
 
     async def _is_admin(self, db_user_id: str) -> bool:
+        """Check if the user is an administrator (HR).
+
+        Args:
+            db_user_id: The user's ID in the database.
+
+        Returns:
+            bool: True if the user has rights to create a review.
+        """
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.post(self._url(f"/api/user/{db_user_id}/is_admin"))
@@ -170,9 +208,14 @@ class TelegramBotService:
         self.dp.message.register(self.handle_edit_department_input, UserStates.editing_department)
 
     async def start_polling(self):
+        """Start the aiogram update processing cycle."""
         await self.dp.start_polling(self.bot)
 
     async def start_command(self, message: Message, state: FSMContext):
+        """Command /start: register/enter the menu.
+
+        Identifies the user by username, and requests the full name if necessary.
+        """
         user_id = message.from_user.id if message.from_user else None
         if not user_id:
             return
@@ -206,9 +249,11 @@ class TelegramBotService:
         await message.answer(self.ASK_FIO_MESSAGE)
 
     async def cancel_command(self, message: Message, state: FSMContext):
+        """The /cancel command: cancels the current state of the FSM and clears it."""
         await state.clear()
 
     async def handle_report_upload(self, message: Message, state: FSMContext):
+        """Processing the PDF report download from HR and sending it to the backend."""
         data = await state.get_data()
         review_id = data.get('waiting_report_upload_for')
         logger.info(f"handle_report_upload: review_id={review_id}, data={data}")
@@ -236,6 +281,7 @@ class TelegramBotService:
             await state.clear()
 
     async def menu_command(self, message: Message, state: FSMContext):
+        """Command /menu: The main menu depending on the role."""
         user_id = message.from_user.id if message.from_user else None
         if not user_id:
             return
@@ -266,6 +312,7 @@ class TelegramBotService:
             )
 
     async def handle_fio_input(self, message: Message, state: FSMContext):
+        """Processing the full name input during registration."""
         user_id = message.from_user.id if message.from_user else None
         if not user_id:
             return
@@ -315,6 +362,7 @@ class TelegramBotService:
             await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def handle_department_input(self, message: Message, state: FSMContext):
+        """Processing department input during registration."""
         user_id = message.from_user.id if message.from_user else None
         if not user_id:
             return
@@ -375,6 +423,7 @@ class TelegramBotService:
             await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def handle_hr_key_input(self, message: Message, state: FSMContext):
+        """Processing the HR key input for granting administrator rights."""
         user_id = message.from_user.id if message.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await message.answer("❌ Сначала зарегистрируйтесь командой /start")
@@ -409,7 +458,7 @@ class TelegramBotService:
         await state.clear()
 
     async def upload_participants_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Начало загрузки участников HR-ом"""
+        """The beginning of the loading of HR participants."""
         user_id = callback.from_user.id if callback.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
@@ -424,7 +473,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def view_report_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Отправка файла отчёта с кнопкой Главное меню"""
+        """Sending a report file with the Main Menu button."""
         review_id = callback.data.replace(f"{self.CB_VIEW_REPORT}_", "")
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
@@ -451,7 +500,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def edit_report_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Запрос на загрузку отредактированного отчёта"""
+        """Request to upload an edited report."""
         review_id = callback.data.replace(f"{self.CB_EDIT_REPORT}_", "")
         await state.update_data(waiting_report_upload_for=review_id)
         await state.set_state(UserStates.waiting_for_report_file)
@@ -461,7 +510,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def handle_participants_file(self, message: Message, state: FSMContext):
-        """Обработка полученного файла с участниками"""
+        """Processing of the received participant file (CSV/XLSX)."""
         
         if not message.document:
             await message.answer("❌ Пришлите файл как документ (CSV/XLSX).")
@@ -524,6 +573,7 @@ class TelegramBotService:
             await state.clear()
 
     async def create_review_callback(self, callback: CallbackQuery, state: FSMContext):
+        """Creating a review on behalf of the current HR user."""
         user_id = callback.from_user.id if callback.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
@@ -556,6 +606,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def list_reviews_callback(self, callback: CallbackQuery, state: FSMContext):
+        """Shows a list of reviews created by the current HR user."""
         user_id = callback.from_user.id if callback.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
@@ -589,7 +640,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def back_to_main_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Возврат в главное меню"""
+        """Return to the main menu."""
         user_id = callback.from_user.id if callback.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
@@ -602,7 +653,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def review_selected_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Обработка выбора конкретного ревью"""
+        """Processing the selection of a specific review."""
         user_id = callback.from_user.id if callback.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
@@ -634,7 +685,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def hr_key_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Обработка нажатия кнопки HR ключа"""
+        """Processing of pressing the HR key."""
         user_id = callback.from_user.id if callback.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
@@ -648,7 +699,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def edit_profile_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Обработка редактирования профиля"""
+        """Processing profile editing."""
         user_id = callback.from_user.id if callback.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
@@ -687,7 +738,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def edit_fio_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Начать изменение ФИО"""
+        """Start changing your full name."""
         user_id = callback.from_user.id if callback.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
@@ -697,7 +748,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def edit_department_callback(self, callback: CallbackQuery, state: FSMContext):
-        """Начать изменение отдела"""
+        """Start changing the department."""
         user_id = callback.from_user.id if callback.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
@@ -707,7 +758,7 @@ class TelegramBotService:
         await callback.answer()
 
     async def handle_edit_fio_input(self, message: Message, state: FSMContext):
-        """Обновление ФИО существующего пользователя"""
+        """Updating the full name of an existing user."""
         user_id = message.from_user.id if message.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await message.answer("❌ Сначала зарегистрируйтесь командой /start")
@@ -736,7 +787,7 @@ class TelegramBotService:
             await state.clear()
 
     async def handle_edit_department_input(self, message: Message, state: FSMContext):
-        """Обновление отдела существующего пользователя"""
+        """Updating the department of an existing user."""
         user_id = message.from_user.id if message.from_user else None
         if not user_id or user_id not in self.user_db_ids:
             await message.answer("❌ Сначала зарегистрируйтесь командой /start")

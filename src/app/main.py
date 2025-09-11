@@ -1,3 +1,8 @@
+"""The main entry point of FastAPI applications.
+
+Creates an instance of the application, installs statics and templates, connects routers
+, and raises background tasks (telegram bot and status manager) at the launch event.
+"""
 # app/main.py
 import asyncio
 import logging

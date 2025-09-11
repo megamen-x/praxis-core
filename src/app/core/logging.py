@@ -1,3 +1,8 @@
+"""Setting up a file logger for recording simple logs.
+
+Returns a lazily initialized module logger that writes to a file
+`{logging_dir}/{filename}` in the message format only, without metadata.
+"""
 import os
 from logging import FileHandler, Formatter, getLogger, INFO
 from src.app.core.config import settings

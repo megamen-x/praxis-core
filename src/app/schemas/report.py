@@ -1,3 +1,5 @@
+"""Pydantic-schemas for reports and report views.
+"""
 # app/schemas/report.py
 from pydantic import BaseModel
 

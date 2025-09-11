@@ -1,3 +1,5 @@
+"""Pydantic-schemes for creating and updating questions.
+"""
 # app/schemas/question.py
 from typing import Optional, Union, List
 from pydantic import BaseModel, Field

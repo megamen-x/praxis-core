@@ -1,3 +1,8 @@
+"""CSRF and service authorization for integrations.
+
+Implements the issuance and verification of CSRF tokens according to the double submit scheme, as well
+as verification of the service token header for internal calls.
+"""
 # app/core/security.py
 import hmac
 import hashlib

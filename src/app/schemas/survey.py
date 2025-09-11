@@ -1,3 +1,5 @@
+"""Pydantic-schemes for operations with surveys.
+"""
 # app/schemas/survey.py
 from pydantic import BaseModel
 from typing import List

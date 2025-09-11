@@ -1,3 +1,5 @@
+"""Pydantic schemes for users.
+"""
 # app/schemas/user.py
 from pydantic import BaseModel
 from datetime import datetime

@@ -1,3 +1,5 @@
+"""Pydantic schemes for reviews.
+"""
 # app/schemas/review.py
 from pydantic import BaseModel, Field
 from typing import Optional

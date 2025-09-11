@@ -1,3 +1,7 @@
+"""Application configuration and LLM client initialization.
+
+Defines `Settings` with environment variables and creates an `OPENAI_CLIENT'.
+"""
 # app/core/config.py
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from openai import AsyncOpenAI

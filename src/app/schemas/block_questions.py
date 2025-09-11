@@ -1,3 +1,5 @@
+"""Pydantic-schemes for block questions.
+"""
 # app/schemas/block_questions.py
 from pydantic import BaseModel, Field
 from typing import List, Optional

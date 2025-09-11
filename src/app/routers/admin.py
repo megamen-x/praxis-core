@@ -1,3 +1,11 @@
+"""Admin HTML pages and API for managing reviews and questions.
+
+Contains:
+- a review editing page;
+- CRUD of review operations;
+- operations with questions and question blocks;
+- generation and updating of block templates.
+"""
 # app/routers/admin.py
 import json
 from random import randint
@@ -27,6 +35,21 @@ templates = Jinja2Templates(directory=settings.JINJA2_TEMPLATES)
 
 @router.get("/admin/reviews/{review_id}", response_class=HTMLResponse)
 async def admin_review_page(review_id: str, request: Request, t: str = Query(...), db: Session = Depends(get_db)):
+    """The admin panel page for editing the review.
+
+    Args:
+        review_id: The ID of the review.
+        request: The request object (for templates and cookies).
+        t: Signed administrator token.
+        db: The DB session.
+
+    Returns:
+        HTMLResponse: Template for editing a review with questions.
+
+    Errors:
+        401: No rights or invalid token.
+        404: No review found.
+    """
     payload = verify_token(t)
     if not payload or payload.get("role") != "admin" or payload.get("sub") != review_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
@@ -77,6 +100,23 @@ async def admin_review_page(review_id: str, request: Request, t: str = Query(...
 
 @router.patch("/api/reviews/{review_id}")
 async def update_review(review_id: str, payload: UpdateReviewIn, request: Request, db: Session = Depends(get_db), t: str = Query(...)):
+    """Partially update the review fields.
+
+    Args:
+        review_id: The ID of the review.
+        payload: Fields to update.
+        request: The request object (for CSRF).
+        db: The DB session.
+        t: The admin token.
+
+    Returns:
+        dict: {"ok": True} on success.
+
+    Errors:
+        401: No rights.
+        403: Invalid CSRF.
+        404: No review found.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
@@ -98,6 +138,22 @@ async def update_review(review_id: str, payload: UpdateReviewIn, request: Reques
 
 @router.delete("/api/reviews/{review_id}")
 async def delete_review(review_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...)):
+    """Delete the entire review.
+
+    Args:
+        review_id: The ID of the review.
+        request: The request object (for CSRF).
+        db: The DB session.
+        t: The admin token.
+
+    Returns:
+        dict: {"ok": True}.
+
+    Errors:
+        401: No rights.
+        403: Invalid CSRF.
+        404: No review found.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
@@ -114,6 +170,24 @@ async def delete_review(review_id: str, request: Request, db: Session = Depends(
 
 @router.post("/api/reviews/{review_id}/questions")
 async def create_review_questions(review_id: str, items: list[QuestionCreate], request: Request, db: Session = Depends(get_db), t: str = Query(...)):
+    """Massively create questions for the review.
+
+    Args:
+        review_id: The ID of the review.
+        items: A list of question descriptions.
+        request: The request object (for CSRF).
+        db: The DB session.
+        t: The admin token.
+
+    Returns:
+        dict: {"ok": True, "count": int} — the number of questions created.
+
+    Errors:
+        401: No rights.
+        403: Invalid CSRF.
+        404: No review found.
+        400: Unsupported question type.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
@@ -182,6 +256,25 @@ async def create_review_questions(review_id: str, items: list[QuestionCreate], r
 
 @router.patch("/api/questions/{question_id}")
 async def update_question(question_id: str, patch: QuestionUpdate, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
+    """Partially update a separate issue of the review.
+
+    Args:
+        question_id: The ID of the question.
+        patch: Fields to update.
+        request: The request object (for CSRF).
+        db: The DB session.
+        t: The admin token.
+        review_id: The ID of the review owner.
+
+    Returns:
+        dict: {"ok": True}.
+
+    Errors:
+        401: No rights.
+        403: Invalid CSRF.
+        404: The issue was not found.
+        400: Unsupported question type.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
@@ -249,6 +342,23 @@ async def update_question(question_id: str, patch: QuestionUpdate, request: Requ
 
 @router.delete("/api/reviews/{review_id}/questions/{question_id}")
 async def delete_review_question(review_id: str, question_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...)):
+    """Remove a question from the review.
+
+    Args:
+        review_id: The ID of the review.
+        question_id: The ID of the question.
+        request: The request object (for CSRF).
+        db: The DB session.
+        t: The admin token.
+
+    Returns:
+        dict: {"ok": True}.
+
+    Errors:
+        401: No rights.
+        403: Invalid CSRF.
+        404: The issue was not found in this review.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
@@ -266,6 +376,20 @@ async def delete_review_question(review_id: str, question_id: str, request: Requ
 
 @router.get("/api/question-blocks")
 async def list_blocks_for_review(review_id: str = Query(...), t: str = Query(...), db: Session = Depends(get_db)):
+    """A list of available question blocks for the review.
+
+    Args:
+        review_id: The ID of the review.
+        t: The admin token.
+        db: The DB session.
+
+    Returns:
+        list[dict]: A list of blocks with brief metadata.
+
+    Errors:
+        401: No rights.
+        404: No review found.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
@@ -294,6 +418,24 @@ async def list_blocks_for_review(review_id: str = Query(...), t: str = Query(...
 
 @router.post("/api/reviews/{review_id}/blocks/{block_id}")
 async def add_block(review_id: str, block_id: str, _: BlockRefIn, request: Request, db: Session = Depends(get_db), t: str = Query(...)):
+    """Add a block of questions to the review.
+
+    Args:
+        review_id: The ID of the review.
+        block_id: The block ID.
+        _: Request body (not used).
+        request: The request object (for CSRF).
+        db: The DB session.
+        t: The admin token.
+
+    Returns:
+        dict: {"ok": True, "count": int} — the number of questions added.
+
+    Errors:
+        401: No rights.
+        403: Invalid CSRF.
+        400: Validation error/incompatible block.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
@@ -310,6 +452,23 @@ async def add_block(review_id: str, block_id: str, _: BlockRefIn, request: Reque
 
 @router.post("/api/question-blocks")
 async def create_question_block(request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
+    """Create a new block of questions from an arbitrary list.
+
+    Args:
+        request: JSON with the block fields and the `items` array.
+        db: The DB session.
+        t: The admin token.
+        review_id: Used to verify the rights and ownership.
+
+    Returns:
+        dict: {"ok": True, "block": {..}} with the block ID.
+
+    Errors:
+        401: No rights.
+        403: Invalid CSRF.
+        400: Input error.
+        404: No review found.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
@@ -394,6 +553,24 @@ async def create_question_block(request: Request, db: Session = Depends(get_db),
 
 @router.patch("/api/question-blocks/{block_id}")
 async def update_question_block(block_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
+    """Update the properties of the question block (name, publicity).
+
+    Args:
+        block_id: The block ID.
+        request: JSON with mutable fields.
+        db: The DB session.
+        t: The admin token.
+        review_id: To verify the owner.
+
+    Returns:
+        dict: {"ok": True}.
+
+    Errors:
+        401: No rights.
+        403: Invalid CSRF/no owner rights.
+        404: The review/block was not found.
+        400: Incorrect field values.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
@@ -426,6 +603,24 @@ async def update_question_block(block_id: str, request: Request, db: Session = D
 
 @router.put("/api/question-blocks/{block_id}/items")
 async def replace_block_items(block_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
+    """Completely replace the elements of the question block.
+
+    Args:
+        block_id: The block ID.
+        request: JSON with an array of `items' (questions and options).
+        db: The DB session.
+        t: The admin token.
+        review_id: To verify the owner.
+
+    Returns:
+        dict: {"ok": True}.
+
+    Errors:
+        401: No rights.
+        403: Invalid CSRF/no owner rights.
+        404: The review/block was not found.
+        400: Unsupported question type.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)
@@ -510,6 +705,23 @@ async def replace_block_items(block_id: str, request: Request, db: Session = Dep
 
 @router.delete("/api/question-blocks/{block_id}")
 async def delete_question_block(block_id: str, request: Request, db: Session = Depends(get_db), t: str = Query(...), review_id: str = Query(...)):
+    """Delete the question block along with the templates and options.
+
+    Args:
+        block_id: The block ID.
+        request: The request object (for CSRF).
+        db: The DB session.
+        t: The admin token.
+        review_id: To verify the owner.
+
+    Returns:
+        dict: {"ok": True}.
+
+    Errors:
+        401: No rights.
+        403: Invalid CSRF/no owner rights.
+        404: The review/block was not found.
+    """
     token = verify_token(t)
     if not token or token.get("role") != "admin" or token.get("sub") != review_id:
         raise HTTPException(status_code=401)

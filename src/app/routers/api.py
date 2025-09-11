@@ -1,3 +1,11 @@
+"""REST API endpoints for users, reviews, surveys, and reports.
+
+Provides CRUD and utility operations:
+- users (create, read, update, delete, check);
+- review (creation, reading, related surveys);
+- surveys (creation/deletion, links, responses);
+- reports (LLM aggregation, upload/download, metadata).
+"""
 # app/routers/api.py
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Form, UploadFile, File
 from fastapi.responses import FileResponse
@@ -43,7 +51,18 @@ router = APIRouter()
 
 @router.post("/api/user/fio", response_model=UserOut)
 async def get_user_by_fio(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Получить список всех пользователей"""
+    """Find the user by full name.
+
+    Args:
+        user_data: The request body with the fields `last_name`, `first_name`, `middle_name'.
+        db: The DB session.
+
+    Returns:
+        UserOut: The found user.
+
+    Errors:
+        400: The user with this full name was not found.
+    """
     user = db.execute(
             select(User).where(
                 User.middle_name == user_data.middle_name,
@@ -61,7 +80,18 @@ async def get_user_by_fio(user_data: UserCreate, db: Session = Depends(get_db)):
 
 @router.get("/api/user/{user_id}", response_model=UserOut)
 async def get_user(user_id: str, db: Session = Depends(get_db)):
-    """Получить пользователя по ID"""
+    """Get a user by ID.
+
+    Args:
+        user_id: The user's ID.
+        db: The DB session.
+
+    Returns:
+        UserOut: The user.
+
+    Errors:
+        404: The user was not found.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -70,7 +100,18 @@ async def get_user(user_id: str, db: Session = Depends(get_db)):
 
 @router.get("/api/user/telegram/{telegram_chat_id}", response_model=UserOut)
 async def get_user_by_telegram(telegram_chat_id: str, db: Session = Depends(get_db)):
-    """Получить пользователя по Telegram chat ID"""
+    """Get the user by Telegram chat ID.
+
+    Args:
+        telegram_chat_id: Numeric chat id in Telegram.
+        db: The DB session.
+
+    Returns:
+        UserOut: The user.
+
+    Errors:
+        404: The user was not found.
+    """
     user = db.execute(
         select(User).where(User.telegram_chat_id == telegram_chat_id)
     ).scalar_one_or_none()
@@ -82,7 +123,18 @@ async def get_user_by_telegram(telegram_chat_id: str, db: Session = Depends(get_
 
 @router.get("/api/user/username/{telegram_username}", response_model=UserOut)
 async def get_user_by_username(telegram_username: str, db: Session = Depends(get_db)):
-    """Получить пользователя по Telegram username (без @)"""
+    """Get a user by Telegram username (without @).
+
+    Args:
+        telegram_username: The user's name without the @ symbol.
+        db: The DB session.
+
+    Returns:
+        UserOut: The user.
+
+    Errors:
+        404: The user was not found.
+    """
     user = db.execute(
         select(User).where(User.telegram_username == telegram_username)
     ).scalar_one_or_none()
@@ -93,7 +145,18 @@ async def get_user_by_username(telegram_username: str, db: Session = Depends(get
 
 @router.post("/api/user", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Создать нового пользователя"""
+    """Create a new user.
+
+    Args:
+        user_data: User data.
+        db: The DB session.
+
+    Returns:
+        UserOut: The created user.
+
+    Errors:
+        400: Conflict over `telegram_chat_id` or `telegram_username'.
+    """
     if user_data.telegram_chat_id:
         existing_user = db.execute(
             select(User).where(User.telegram_chat_id == user_data.telegram_chat_id)
@@ -121,7 +184,15 @@ async def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/api/user/{user_id}/check-telegram", status_code=status.HTTP_201_CREATED)
 async def check_telegram(user_id: str, db: Session = Depends(get_db)):
-    """Проверить Telegram у человека"""
+    """Check if the user has a registered Telegram account.
+
+    Args:
+        user_id: The user's ID.
+        db: The DB session.
+
+    Returns:
+        dict: {"is_registered": 1/0} or {"result": "error"} if the user is not found.
+    """
     user = db.get(User, user_id)
     if not user:
         return {'result': 'error'}
@@ -129,7 +200,15 @@ async def check_telegram(user_id: str, db: Session = Depends(get_db)):
 
 @router.post("/api/user/{user_id}/is_admin", status_code=status.HTTP_201_CREATED)
 async def is_admin(user_id: str, db: Session = Depends(get_db)):
-    """Проверить человека на возможность создавать ревью"""
+    """Check the user's rights to create a review.
+
+    Args:
+        user_id: The user's ID.
+        db: The DB session.
+
+    Returns:
+        dict: {"is_admin": 1/0} or {"result": "error"} if the user is not found.
+    """
     user = db.get(User, user_id)
     if not user:
         return {'result': 'error'}
@@ -137,7 +216,15 @@ async def is_admin(user_id: str, db: Session = Depends(get_db)):
 
 @router.post("/api/user/{user_id}/protote_to_admin", status_code=status.HTTP_201_CREATED)
 async def promote_to_admin(user_id: str, db: Session = Depends(get_db)):
-    """Сделать человека админом"""
+    """Grant the user administrator rights (creating a review).
+
+    Args:
+        user_id: The user's ID.
+        db: The DB session.
+
+    Returns:
+        dict: {'result': 'ok'|'already_admin'|'error'}.
+    """
     user = db.get(User, user_id)
     if not user:
         return {'result': 'error'}
@@ -151,7 +238,20 @@ async def promote_to_admin(user_id: str, db: Session = Depends(get_db)):
 
 @router.put("/api/user/{user_id}", response_model=UserOut)
 async def update_user(user_id: str, user_data: UserUpdate, db: Session = Depends(get_db)):
-    """Обновить пользователя"""
+    """Update the user's data.
+
+    Args:
+        user_id: The user's ID.
+        user_data: Partial update of fields.
+        db: The DB session.
+
+    Returns:
+        UserOut: The updated user.
+
+    Errors:
+        404: The user was not found.
+        400: Email or telegram_username conflict.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -186,7 +286,18 @@ async def update_user(user_id: str, user_data: UserUpdate, db: Session = Depends
 
 @router.delete("/api/user/{user_id}")
 async def delete_user(user_id: str, db: Session = Depends(get_db)):
-    """Удалить пользователя"""
+    """Delete the user.
+
+    Args:
+        user_id: The user's ID.
+        db: The DB session.
+
+    Returns:
+        dict: {"ok": True, "message": "User deleted successfully"}.
+
+    Errors:
+        404: The user was not found.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -198,13 +309,31 @@ async def delete_user(user_id: str, db: Session = Depends(get_db)):
 
 @router.get("/api/users", response_model=List[UserOut])
 async def get_all_users(db: Session = Depends(get_db)):
-    """Получить список всех пользователей"""
+    """Get a list of all users.
+
+    Args:
+        db: The DB session.
+
+    Returns:
+        List[UserOut]: A list of users.
+    """
     users = db.execute(select(User)).scalars().all()
     return users
 
 @router.get("/api/user/{user_id}/reports", response_model=List[ReportWithReviewOut])
 async def get_user_reports(user_id: str, db: Session = Depends(get_db)):
-    """Получить отчеты по конкретному сотруднику (subject_user_id)"""
+    """Get reports on an employee (subject_user_id).
+
+    Args:
+        user_id: The employee's ID (subject_user_id in the Review).
+        db: The DB session.
+
+    Returns:
+        List[ReportWithReviewOut]: A list of reports with data about the review and the employee.
+
+    Errors:
+        404: The user was not found.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -239,7 +368,18 @@ async def get_user_reports(user_id: str, db: Session = Depends(get_db)):
 
 @router.get("/api/user/{user_id}/reviews", response_model=List[ReviewOut])
 async def get_user_reviews(user_id: str, db: Session = Depends(get_db)):
-    """Получить список Review по created_by_user_id"""
+    """Get a list of Reviews created by the user.
+
+    Args:
+        user_id: created_by_user_id.
+        db: The DB session.
+
+    Returns:
+        List[ReviewOut]: A list of reviews.
+
+    Errors:
+        404: The user was not found.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -266,7 +406,18 @@ async def get_user_reviews(user_id: str, db: Session = Depends(get_db)):
 
 @router.get("/api/user/{user_id}/surveys", response_model=List[SurveyWithUserOut])
 async def get_user_surveys(user_id: str, db: Session = Depends(get_db)):
-    """Получить Survey по evaluator_user_id"""
+    """Get surveys by evaluator_user_id.
+
+    Args:
+        user_id: The identifier of the evaluator user.
+        db: The DB session.
+
+    Returns:
+        List[SurveyWithUserOut]: A list of surveys with additional information.
+
+    Errors:
+        404: The user was not found.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -305,7 +456,18 @@ async def get_user_surveys(user_id: str, db: Session = Depends(get_db)):
 
 @router.get("/api/review/{review_id}", response_model=ReviewOut)
 async def get_review(review_id: str, db: Session = Depends(get_db)):
-    """Получить информацию о ревью по ID"""
+    """Get information about the review by ID.
+
+    Args:
+        review_id: The ID of the review.
+        db: The DB session.
+
+    Returns:
+        ReviewOut: Review data.
+
+    Errors:
+        404: No review found.
+    """
     review = db.get(Review, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
@@ -326,6 +488,19 @@ async def get_review(review_id: str, db: Session = Depends(get_db)):
 def create_review(
     payload: CreateReviewIn, request: Request, db: Session = Depends(get_db)
 ):
+    """Create a review.
+
+    Args:
+        payload: Review data (creator, subject, title, etc.).
+request: Request object (reserved).
+        db: The DB session.
+
+    Returns:
+        ReviewOut: The created review (including the admin link).
+
+    Errors:
+        404: Creator or subject not found.
+    """
     
     created_by = db.get(User, payload.created_by_user_id)
     if not created_by:
@@ -360,7 +535,18 @@ def create_review(
 
 @router.get("/api/reviews/{review_id}/surveys")
 def get_surveys(review_id: str, db: Session = Depends(get_db)):
-    """Get all surveys for a review"""
+    """Get all the surveys for a specific review.
+
+    Args:
+        review_id: The ID of the review.
+        db: The DB session.
+
+    Returns:
+        List[dict]: A list of objects with the fields `survey_id`, `evaluator_user_id`, and `status'.
+
+    Errors:
+        404: No review found.
+    """
     review = db.get(Review, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
@@ -374,7 +560,18 @@ def get_surveys(review_id: str, db: Session = Depends(get_db)):
 
 @router.get("/api/surveys/{survey_id}/admin_link")
 async def get_survey_admin_link(survey_id: str, db: Session = Depends(get_db)):
-    """Сгенерировать ссылку для HR на read-only просмотр опроса."""
+    """Generate a link for HR to read-only view the survey.
+
+    Args:
+        survey_id: The survey ID.
+        db: The DB session.
+
+    Returns:
+        dict: {"url": "/admin/surveys/{survey_id}?t=..."}.
+
+    Errors:
+        404: The survey was not found.
+    """
     survey = db.get(Survey, survey_id)
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
@@ -386,6 +583,20 @@ async def get_survey_admin_link(survey_id: str, db: Session = Depends(get_db)):
 def create_surveys(
     review_id: str, payload: CreateSurveysIn, request: Request, db: Session = Depends(get_db), 
 ):
+    """Create surveys for review based on the evaluator_user_ids list.
+
+    Args:
+        review_id: The ID of the review.
+        payload: A list of appraiser IDs.
+        request: The request object (reserved).
+        db: The DB session.
+
+    Returns:
+        dict: {'task': 'ok'} after successful creation.
+
+    Errors:
+        404: No review found.
+    """
     review = db.get(Review, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
@@ -405,7 +616,18 @@ def create_surveys(
 
 @router.delete("/api/surveys/{survey_id}")
 def delete_survey(survey_id: str, db: Session = Depends(get_db)):
-    """Delete a survey"""
+    """Delete the survey.
+
+    Args:
+        survey_id: The survey ID.
+        db: The DB session.
+
+    Returns:
+        dict: {"ok": True, "message": "Survey deleted successfully"}.
+
+    Errors:
+        404: The survey was not found.
+    """
     survey = db.get(Survey, survey_id)
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
@@ -418,6 +640,15 @@ def delete_survey(survey_id: str, db: Session = Depends(get_db)):
 async def llm_aggregation(
     review_id: str = Form(...), db: Session = Depends(get_db)
 ):
+    """Generate/update a review report using LLM aggregation.
+
+    Args:
+        review_id: The ID of the review (form-data).
+        db: The DB session.
+
+    Returns:
+        dict: {"path_to_file": str, "report_id": str}.
+    """
     survey_ids = db.scalars(
         select(Survey.survey_id)
         .where(Survey.review_id == review_id)
@@ -580,6 +811,18 @@ async def llm_aggregation(
 
 @router.get("/api/reviews/{review_id}/report", response_model=ReportOut)
 async def get_review_report(review_id: str, db: Session = Depends(get_db)):
+    """Get the metadata of the review report.
+
+    Args:
+        review_id: The ID of the review.
+        db: The DB session.
+
+    Returns:
+        ReportOut: Report data with the file path (if any).
+
+    Errors:
+        404: The report was not found.
+    """
     report = db.execute(select(Report).where(Report.review_id == review_id)).scalar_one_or_none()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -598,6 +841,18 @@ async def get_review_report(review_id: str, db: Session = Depends(get_db)):
 
 @router.get("/api/reviews/{review_id}/report/download")
 async def download_review_report(review_id: str, db: Session = Depends(get_db)):
+    """Download the PDF review report.
+
+    Args:
+        review_id: The ID of the review.
+        db: The DB session.
+
+    Returns:
+        FileResponse: A PDF file of the report.
+
+    Errors:
+        404: The report is missing or the file was not found on the disk.
+    """
     report = db.execute(select(Report).where(Report.review_id == review_id)).scalar_one_or_none()
     if not report or not report.file_path:
         raise HTTPException(status_code=404, detail="Report file not found")
@@ -609,6 +864,19 @@ async def download_review_report(review_id: str, db: Session = Depends(get_db)):
 
 @router.post("/api/reviews/{review_id}/report/upload", response_model=ReportOut)
 async def upload_review_report(review_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Upload/update the review report file.
+
+    Args:
+        review_id: The ID of the review.
+        file: A downloadable report file (usually PDF).
+        db: The DB session.
+
+    Returns:
+        ReportOut: Updated report data.
+
+    Errors:
+        404: No review found.
+    """
     review = db.get(Review, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
@@ -644,6 +912,20 @@ async def upload_review_report(review_id: str, file: UploadFile = File(...), db:
 
 @router.patch("/api/reviews/{review_id}/report-meta", response_model=ReportOut)
 async def update_report_meta(review_id: str, request: Request, db: Session = Depends(get_db)):
+    """Update the text prompt of the report to generate.
+
+    Args:
+        review_id: The ID of the review.
+        request: JSON with the `prompt` (str) field.
+        db: The DB session.
+
+    Returns:
+        ReportOut: Report data after prompt update.
+
+    Errors:
+        400: The `prompt` field is missing.
+        404: No review found.
+    """
     payload = await request.json()
     prompt = payload.get("prompt")
     if prompt is None:

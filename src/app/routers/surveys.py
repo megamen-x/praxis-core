@@ -1,3 +1,11 @@
+"""HTML pages of the survey form and endpoints for saving responses.
+
+Contains:
+- the page where the respondent completed the survey;
+- read-only the survey review page for HR;
+- API for saving draft and final responses;
+- thank you page after sending.
+"""
 # app/routers/surveys.py
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
@@ -34,6 +42,21 @@ def utcnow() -> datetime:
 
 @router.get("/form/{survey_id}", response_class=HTMLResponse)
 async def form_page(survey_id: str, request: Request, t: str = Query(...), db: Session = Depends(get_db)):
+    """Display the page where the respondent completed the survey.
+
+    Args:
+        survey_id: The survey ID.
+        request: The request object (for templates and cookies).
+        t: Respondent's token (query), signed and limited by ttl.
+        db: The DB session.
+
+    Returns:
+        HTMLResponse: A generated HTML page with questions.
+
+    Errors:
+        401: Invalid or expired token.
+        404: The survey or review was not found.
+    """
     payload = verify_token(t)
     if not payload or payload.get("role") != "respondent" or payload.get("sub") != survey_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
@@ -91,6 +114,21 @@ async def form_page(survey_id: str, request: Request, t: str = Query(...), db: S
 
 @router.get("/admin/surveys/{survey_id}", response_class=HTMLResponse)
 async def survey_admin_readonly_page(survey_id: str, request: Request, t: str = Query(...), db: Session = Depends(get_db)):
+    """Read-only view of the HR survey.
+
+    Args:
+        survey_id: The survey ID.
+        request: The request object (for templates).
+        t: The admin token from the signed link.
+        db: The DB session.
+
+    Returns:
+        HTMLResponse: Read-only page with questions and answers.
+
+    Errors:
+        401: No access (bad token/role/subject).
+        404: The survey was not found.
+    """
     payload = verify_token(t)
     if not payload or payload.get("role") != "admin" or payload.get("sub") != survey_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
@@ -169,6 +207,27 @@ async def save_answers(
     draft: bool = Query(False),
     final: bool = Query(False),
 ):
+    """Save the survey responses.
+
+    Supports saving draft (`draft=true`) and final submission (`final=true`).
+
+    Args:
+        survey_id: The survey ID.
+        payload: The request body with the `csrf_token` and the list of responses.
+        request: The request object contains headers and cookies.
+        db: The DB session.
+        t: A signed access token for the survey.
+        draft: Draft mode (default is False).
+        final: Final submission (False by default).
+
+    Returns:
+        dict: {"ok": True, "final": bool}.
+
+    Errors:
+        401: Invalid token.
+        403: Invalid CSRF.
+        404: The survey/review was not found.
+    """
     token = verify_token(t)
     if not token or token.get("sub") != survey_id:
         raise HTTPException(status_code=401)
@@ -229,4 +288,12 @@ async def save_answers(
 
 @router.get("/thanks", response_class=HTMLResponse)
 async def thanks_page(request: Request):
+    """A thank you page after sending the survey.
+
+    Args:
+        request: The request object (for the template).
+
+    Returns:
+        HTMLResponse: An HTML thank-you page.
+    """
     return templates.TemplateResponse("thanks.html", {"request": request, "title": "Спасибо"})

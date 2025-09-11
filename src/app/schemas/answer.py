@@ -1,3 +1,5 @@
+"""Pydantic-schemes for respondents' responses.
+"""
 # app/schemas/answer.py
 from pydantic import BaseModel
 from typing import List

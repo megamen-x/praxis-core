@@ -1,3 +1,8 @@
+"""Scheduler for review statuses and notification distribution.
+
+Periodically transfers reviews between statuses, sends links to participants,
+reminds them of deadlines, and sends HR notifications and reports.
+"""
 # src/app/services/status_manager.py
 import asyncio
 from datetime import datetime, timezone, timedelta
@@ -27,6 +32,11 @@ def _minute_window(now: datetime) -> Tuple[datetime, datetime]:
 
 
 async def _send_many(messages: list[tuple[int, str, str]]) -> None:
+    """Send multiple messages with a link button to the survey.
+
+    Args:
+        messages: A list of tuples (chat_id, text, url).
+    """
     if not messages:
         return
 
@@ -49,6 +59,11 @@ async def _send_many(messages: list[tuple[int, str, str]]) -> None:
             logger.error("Failed to send message to %s: %s", chat_id, e)
 
 async def _send_hrs(messages: list[tuple[int, str, str]]) -> None:
+    """Send HR messages with the attached report file.
+
+    Args:
+        messages: A list of tuples (chat_id, text, path_to_file).
+    """
     if not messages:
         return
 
@@ -90,8 +105,15 @@ async def _send_hr_text(messages: list[tuple[int, str, str]]) -> None:
 
 async def _process_start_reviews(db: Session, now: datetime) -> int:
     """
-    Переводит ревью со статусом draft в in_progress, если start_at совпадает по минуте.
-    Рассылает ссылки на прохождение Survey их участникам.
+    Transfers a review with draft status to in_progress if start_at matches by the minute.
+    Sends links to Survey participants.
+
+    Args:
+        db: The DB session.
+        now: Current time (UTC), used for the minutes window.
+
+    Returns:
+        int: The number of running reviews.
     """
     start, end = _minute_window(now)
 
@@ -143,8 +165,15 @@ async def _process_start_reviews(db: Session, now: datetime) -> int:
 
 async def _process_end_reviews(db: Session, now: datetime) -> int:
     """
-    Переводит ревью со статусом in_progress в completed, если end_at совпадает по минуте.
-    Помечает незавершенные опросы как expired и отправляет создателю Review уведомление «Отчет готов».
+    Converts a review with the in_progress status to completed if end_at matches by the minute.
+    Marks incomplete surveys as expired and sends the "Report is ready" notification to the Review creator.
+
+    Args:
+        db: The DB session.
+        now: Current time (UTC).
+
+    Returns:
+        int: The number of completed reviews.
     """
     start, end = _minute_window(now)
 
@@ -200,10 +229,17 @@ async def _process_end_reviews(db: Session, now: datetime) -> int:
 
 async def _process_survey_reminders(db: Session, now: datetime) -> int:
     """
-    Отправляет напоминания по опросам, у которых наступил `notification_call`.
-    После отправки переносит `notification_call` в середину между текущим `notification_call` и `review.end_at`.
-    Последнее изменение выполняется, если до `review.end_at` остается 1 день или меньше — устанавливает `notification_call` на `review.end_at`.
-    Не шлёт напоминания, если опрос завершён/отклонён/просрочен.
+    Sends reminders for surveys that have a `notification_call'.
+    After sending, it moves the `notification_call` to the middle between the current `notification_call` and `review.end_at'.
+    The last change is performed if there is 1 day or less left before `review.end_at` — sets `notification_call` to `review.end_at`.
+    It does not send reminders if the survey is completed/rejected/overdue.
+
+    Args:
+        db: The DB session.
+        now: Current time (UTC).
+
+    Returns:
+        int: The number of reminders sent.
     """
     start, end = _minute_window(now)
 
@@ -261,8 +297,15 @@ async def _process_survey_reminders(db: Session, now: datetime) -> int:
 
 async def _process_hr_day_before_end(db: Session, now: datetime) -> int:
     """
-    За 1 день до окончания ревью уведомить HR (создателя), если есть незавершенные опросы.
-    Отправляется однократно, когда `review.end_at` ровно через 1 день от текущего времени (окно по минуте).
+    Notify HR (the creator) 1 day before the end of the review if there are incomplete surveys.
+    It is sent once when `review.end_at' is exactly 1 day after the current time (window by minute).
+
+    Args:
+        db: The DB session.
+        now: Current time (UTC).
+
+    Returns:
+        int: The number of HR notifications sent.
     """
     target = now + timedelta(days=1)
     start = target.replace(second=0, microsecond=0)
@@ -314,8 +357,14 @@ async def _process_hr_day_before_end(db: Session, now: datetime) -> int:
 
 async def process_tick(now: Optional[datetime] = None) -> dict:
     """
-    Один «тик» планировщика: обработать старт/завершение ревью, разослать уведомления.
-    Возвращает статистику по обновлениям.
+    One "tick" of the scheduler: process the start/end of the review, send out notifications.
+    Returns statistics on updates.
+
+    Args:
+        now: The fixed time (UTC) to start; if None, the current time is taken.
+
+    Returns:
+        dict: Statistics on transactions per tick.
     """
     if now is None:
         now = datetime.now(timezone.utc)
@@ -337,7 +386,8 @@ async def process_tick(now: Optional[datetime] = None) -> dict:
 
 async def run_status_manager_loop():
     """
-    Фоновая задача: запускать process_tick каждую минуту (по границам минут).
+    Background task: Run process_tick every minute (within minutes).
+    Logs errors safely and withstands the delay until the next minute.
     """
     logger.info("Status manager loop started")
     await asyncio.sleep(0.5)
