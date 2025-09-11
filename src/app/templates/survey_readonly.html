@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mono mb-3">{{ review.title }}</h1>
+<p class="mb-4">{{ review.description }}</p>
+
+{% if subject_name %}
+<div class="subject-info mb-4">
+  <label class="form-label mono" style="margin-bottom: 0rem;">Субъект оценки: {{ subject_name }}</label>
+  <div class="text-muted small">Статус опроса: {{ survey.status.value }}</div>
+  {% if survey.submitted_at %}
+    <div class="text-muted small">Отправлен: {{ survey.submitted_at }}</div>
+  {% endif %}
+{% endif %}
+
+<div class="alert alert-warning" role="alert">
+  Редактирование отключено. Это режим только для просмотра.
+ </div>
+
+<div class="readonly-form">
+  {% for q in questions %}
+    <div class="q-block mb-3" data-qid="{{ q.question_id }}">
+      <label class="form-label mono">{{ loop.index }}. {{ q.question_text }} {% if q.is_required %}*{% endif %}</label>
+
+      {% if q.question_type == 'text' or q.question_type == 'textarea' or q.question_type == 'range_slider' %}
+        <input class="form-control brutal-input" type="text" value="{{ q.answer.response_text or '' }}" disabled>
+
+      {% elif q.question_type == 'radio' %}
+        {% set selected = (q.answer.selected_option_ids or []) %}
+        {% for opt in (q.meta.options or []) %}
+          <div class="form-check">
+            <input class="form-check-input" type="radio" disabled {% if opt.option_id in selected %}checked{% endif %}>
+            <label class="form-check-label">{{ opt.option_text }}</label>
+          </div>
+        {% endfor %}
+
+      {% elif q.question_type == 'checkbox' %}
+        {% set selected = (q.answer.selected_option_ids or []) %}
+        {% for opt in (q.meta.options or []) %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" disabled {% if opt.option_id in selected %}checked{% endif %}>
+            <label class="form-check-label">{{ opt.option_text }}</label>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}
+

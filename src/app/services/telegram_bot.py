@@ -46,7 +46,8 @@ class TelegramBotService:
     CB_BACK_TO_MAIN = "back_to_main"
     CB_VIEW_REPORT = "view_report"
     CB_EDIT_REPORT = "edit_report"
-    
+    CB_LIST_REVIEW_SURVEYS = "list_review_surveys"
+
     # Тексты кнопок
     BTN_CREATE_REVIEW = "📝 Создать ревью"
     BTN_LIST_REVIEWS = "📝 Посмотреть список ревью"
@@ -54,6 +55,7 @@ class TelegramBotService:
     BTN_EDIT_REVIEW = "✏️ Изменить ревью"
     BTN_VIEW_REPORT = "📄 Просмотреть отчёт"
     BTN_EDIT_REPORT = "📝 Изменить отчёт"
+    BTN_VIEW_SURVEYS = "🧩 Посмотреть опросы участников"
 
     # Тексты
     ASK_FIO_MESSAGE = "Введите ваше имя (в формате ФИО): "
@@ -119,6 +121,8 @@ class TelegramBotService:
                     kb.button(text=self.BTN_EDIT_REPORT, callback_data=f"{self.CB_EDIT_REPORT}_{review_id}")
         except Exception:
             pass
+        # Новая кнопка просмотра опросов участников
+        kb.button(text=self.BTN_VIEW_SURVEYS, callback_data=f"{self.CB_LIST_REVIEW_SURVEYS}_{review_id}")
 
         kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
         kb.adjust(1)
@@ -161,6 +165,7 @@ class TelegramBotService:
         self.dp.callback_query.register(self.review_selected_callback, F.data.startswith("review_"))
         self.dp.callback_query.register(self.view_report_callback, F.data.startswith(self.CB_VIEW_REPORT))
         self.dp.callback_query.register(self.edit_report_callback, F.data.startswith(self.CB_EDIT_REPORT))
+        self.dp.callback_query.register(self.list_review_surveys_callback, F.data.startswith(self.CB_LIST_REVIEW_SURVEYS))
 
         # Обработчики состояний FSM
         self.dp.message.register(self.handle_fio_input, UserStates.waiting_for_fio)
@@ -254,7 +259,7 @@ class TelegramBotService:
             except Exception:
                 await message.answer("❌ Произошла ошибка. Попробуйте позже.")
                 return
-
+        
         is_admin = await self._is_admin(self.user_db_ids[user_id])
         if is_admin:
             await message.answer(
@@ -451,7 +456,7 @@ class TelegramBotService:
                         await callback.message.answer_document(document=file_obj)
                         kb = InlineKeyboardBuilder()
                         kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
-                        await callback.message.answer("Готово.", reply_markup=kb.as_markup())
+                        await callback.message.answer("Ваш отчет", reply_markup=kb.as_markup())
                     else:
                         await callback.message.answer("❌ Не удалось скачать отчёт.")
                 else:
@@ -536,7 +541,6 @@ class TelegramBotService:
             await message.answer("❌ Произошла ошибка при обработке файла.")
         finally:
             await state.clear()
-
 
     # ------------------------------- Callback обработчики ------------------------------- #
     async def create_review_callback(self, callback: CallbackQuery, state: FSMContext):
@@ -707,6 +711,59 @@ class TelegramBotService:
             logger.error(f"Ошибка при получении профиля: {e}")
             await callback.message.edit_text("❌ Произошла ошибка. Попробуйте позже.")
         
+        await callback.answer()
+
+    async def list_review_surveys_callback(self, callback: CallbackQuery, state: FSMContext):
+        """Показать список опросов для ревью с ссылками на просмотр."""
+        user_id = callback.from_user.id if callback.from_user else None
+        if not user_id or user_id not in self.user_db_ids:
+            await callback.answer("❌ Сначала зарегистрируйтесь командой /start", show_alert=True)
+            return
+        # Проверим права
+        is_admin = await self._is_admin(self.user_db_ids[user_id])
+        if not is_admin:
+            await callback.answer("⛔ Доступно только HR", show_alert=True)
+            return
+
+        review_id = callback.data.replace(f"{self.CB_LIST_REVIEW_SURVEYS}_", "")
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(self._url(f"/api/reviews/{review_id}/surveys"))
+                if resp.status_code != 200:
+                    await callback.message.edit_text("❌ Не удалось получить список опросов.")
+                    await callback.answer()
+                    return
+                surveys = resp.json()
+
+                kb = InlineKeyboardBuilder()
+                if not surveys:
+                    kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
+                    await callback.message.edit_text("Опросы отсутствуют.", reply_markup=kb.as_markup())
+                    await callback.answer()
+                    return
+
+                # Для каждой анкеты получаем admin-view ссылку
+                for idx, s in enumerate(surveys, start=1):
+                    surv_id = s.get('survey_id')
+                    status = s.get('status')
+                    # Получаем admin ссылку (подписанную) на просмотр
+                    link_resp = await client.get(self._url(f"/api/surveys/{surv_id}/admin_link"))
+                    url = None
+                    if link_resp.status_code == 200:
+                        url = self._url(link_resp.json().get('url', ''))
+                    btn_text = f"Опрос {idx} — {status}"
+                    if url:
+                        kb.button(text=btn_text, url=url)
+                    else:
+                        kb.button(text=f"{btn_text} (без ссылки)", callback_data=self.CB_BACK_TO_MAIN)
+
+                kb.button(text="↩️ Назад к ревью", callback_data=f"review_{review_id}")
+                kb.button(text=self.BTN_BACK_TO_MAIN, callback_data=self.CB_BACK_TO_MAIN)
+                kb.adjust(1)
+                await callback.message.edit_text("Выберите опрос для просмотра:", reply_markup=kb.as_markup())
+        except Exception as e:
+            logger.error(f"Ошибка при получении опросов ревью: {e}")
+            await callback.message.edit_text("❌ Произошла ошибка при получении списка опросов.")
         await callback.answer()
 
 

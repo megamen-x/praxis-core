@@ -380,6 +380,17 @@ def get_surveys(review_id: str, db: Session = Depends(get_db)):
     
     return [{"survey_id": s.survey_id, "evaluator_user_id": s.evaluator_user_id, "status": s.status.value} for s in surveys]
 
+
+@router.get("/api/surveys/{survey_id}/admin_link")
+async def get_survey_admin_link(survey_id: str, db: Session = Depends(get_db)):
+    """Сгенерировать ссылку для HR на read-only просмотр опроса."""
+    survey = db.get(Survey, survey_id)
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    t = sign_token({"role": "admin", "sub": survey_id}, ttl_sec=settings.ADMIN_LINK_TTL)
+    url = f"/admin/surveys/{survey_id}?t={t}"
+    return {"url": url}
+
 @router.post("/api/reviews/{review_id}/surveys")
 # _: None = Depends(require_bot_auth)
 def create_surveys(
