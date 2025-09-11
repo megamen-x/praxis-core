@@ -1,7 +1,5 @@
 # app/schemas/report.py
 from pydantic import BaseModel
-from typing import Optional
-
 
 class ReportOut(BaseModel):
     report_id: str

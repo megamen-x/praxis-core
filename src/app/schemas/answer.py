@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List
 
 # Новая, более строгая схема для сохранения ответа
 class AnswerIn(BaseModel):

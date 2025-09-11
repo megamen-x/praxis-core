@@ -4,20 +4,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from sqlalchemy import select, update, delete, func
+from sqlalchemy import select, update
+
 from src.app.core.config import settings
 from src.db.session import get_db
 from src.app.core.security import verify_csrf, issue_csrf
 from src.app.schemas.review import UpdateReviewIn
 from src.app.schemas.question import QuestionCreate, QuestionUpdate, BlockRefIn
 from src.app.services.links import verify_token
-
-# models
 from src.db.models.review import Review
 from src.db.models.question import Question, QuestionType, QuestionOption
 from src.db.models.question_bank import QuestionBlock, QuestionBlockItem, QuestionTemplate, QuestionTemplateOption
-
-# service to materialize a block
 from src.app.services.review_blocks import add_block_to_review
 from src.app.core.logging import get_logs_writer_logger
 

@@ -1,13 +1,9 @@
 # app/services/telegram_bot.py
 import csv, io
 import pandas as pd
-import logging
 from typing import Dict
-from dotenv import dotenv_values
-
 import httpx
 
-from aiogram.types import ContentType
 from aiogram.types import BufferedInputFile
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
@@ -16,10 +12,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+
 from src.app.core.logging import get_logs_writer_logger
+from src.app.core.config import settings
 
 logger = get_logs_writer_logger()
-config = dotenv_values(".env")
 
 
 class UserStates(StatesGroup):
@@ -857,8 +854,8 @@ async def start_telegram_bot():
     """Запуск телеграм-бота"""
     global telegram_bot_service
     
-    bot_token = config.get("BOT_TOKEN")
-    backend_url = config.get("BACKEND_URL", "http://127.0.0.1:8000")
+    bot_token = settings.BOT_TOKEN
+    backend_url = settings.BACKEND_URL
     
     if not bot_token:
         logger.warning("BOT_TOKEN не установлен. Телеграм-бот не будет запущен.")

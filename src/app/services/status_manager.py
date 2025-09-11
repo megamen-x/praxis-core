@@ -1,6 +1,5 @@
 # src/app/services/status_manager.py
 import asyncio
-import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 

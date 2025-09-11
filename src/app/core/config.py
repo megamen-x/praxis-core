@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     LOG_PATH: str="logging"
     SECRET_KEY: str = "change-me-in-env"
     DATABASE_URL: str = "sqlite:///./app.db"
-    TG_BOT_TOKEN: str = "change-me-in-env"
+    BOT_TOKEN: str = "change-me-in-env"
     
     CSRF_COOKIE_NAME: str = "csrf_seed"
     CSRF_COOKIE_SECURE: bool = False
