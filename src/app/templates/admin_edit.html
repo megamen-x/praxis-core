@@ -177,15 +177,21 @@
     }
   });
 
-  document.getElementById('btn-save-prompt').addEventListener('click', async () => {
+  async function saveReportPrompt() {
     const mode = document.getElementById('prompt-mode').value;
     const promptText = (document.getElementById('llm-prompt').value || '').trim();
     const payload = { prompt: mode === 'custom' ? promptText : '' };
+    const res = await fetch(`/api/reviews/${reviewId}/report-meta?t=${token}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error('Ошибка сохранения промпта');
+  }
+
+  document.getElementById('btn-save-prompt').addEventListener('click', async () => {
     try {
-      const res = await fetch(`/api/reviews/${reviewId}/report-meta?t=${token}`, { method:'PATCH', headers: headers(), body: JSON.stringify(payload) });
-      if (!res.ok) { alert('Не удалось сохранить промпт'); return; }
+      await saveReportPrompt();
       alert('Промпт сохранён');
-    } catch(_) { alert('Ошибка сохранения промпта'); }
+    } catch(_) {
+      alert('Не удалось сохранить промпт');
+    }
   });
 
   loadReportMeta();
@@ -665,6 +671,7 @@
     try {
       saveBtn.disabled = true; saveBtn.textContent = 'Сохранение...';
       await saveReviewMeta();
+      await saveReportPrompt();
       await saveExistingQuestions();
       await createNewQuestionsIfAny();
       alert('Форма успешно сохранена!');
