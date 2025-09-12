@@ -41,7 +41,7 @@
 ## <h3 align="start"><a id="title2">Архитектура</a></h3>
 
 <details>
-  <summary> <strong><i>Взаимодействие пользователя с приложением (WIP)</i></strong> </summary>
+  <summary> <strong><i>Взаимодействие пользователя с приложением</i></strong> </summary>
 
   ```mermaid
   sequenceDiagram
@@ -49,18 +49,14 @@
     actor Jonh as Employees
     participant TG Bot as Praxis-Bot
     participant Site as Praxis-Web
-
+  
     Alice ->> TG Bot: User auth, new form create
     activate TG Bot
-    TG Bot ->> Site: New Empty Form + Subject-User Data
+    TG Bot ->> Site: New Empty Form
     activate Site
     Site -->> Alice: Pre-filled Form
     Alice ->> Site: New data to Pre-filled Form
     Site -->> TG Bot: Filled Form
-    TG Bot -->> Alice: Survey can be created
-    Alice ->> TG Bot: Create Surveys and assignment  
-    TG Bot ->> Site: Create Surveys from Filled Form
-    Site -->> TG Bot: Empty Survey
     TG Bot -->> Jonh: Survey mailing
     Jonh ->> Site: Filled Survey
     Site -->> Site: LLM process
@@ -140,6 +136,23 @@
     │   │   │   └── user.py
     │   │   ├── __init__.py
     │   │   └── session.py
+    │   ├── Ilm_agg/
+    │   │   ├── prompts/
+    │   │   │   ├── __init__.py
+    │   │   │   ├── base.py
+    │   │   │   └── eval.py
+    │   │   ├── reports/
+    │   │   │   ├── __init__.py
+    │   │   │   ├── jinja.py
+    │   │   │   └── plots.py
+    │   │   ├── schemas/
+    │   │   │   ├── __init__.py
+    │   │   │   ├── recommendations.py
+    │   │   │   └── sides.py
+    │   │   ├── __init__.py
+    │   │   ├── predict.py
+    │   │   ├── response.py
+    │   │   └── utils.py
     │   ├── app/
     │   │   ├── core/
     │   │   │   ├── config.py
@@ -181,9 +194,9 @@
 
 <br>
 
-<h4 align="start"><a>Примеры отчетов, сгенерированных системой (WIP)</a></h4>
+<!--<h4 align="start"><a>Примеры отчетов, сгенерированных системой (WIP)</a></h4>
 
-Пример итогового отчета вы можете увидеть [здесь]()
+Пример итогового отчета вы можете увидеть [здесь]()-->
 
 <p align="right">(<a href="#readme-top"><i>Вернуться наверх</i></a>)</p>
 
