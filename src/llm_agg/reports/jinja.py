@@ -261,7 +261,7 @@ def create_report(
     template = env.get_template(template_name)
     html = template.render(**context)
 
-    pdf_name = f"review-{_safe_filename(employee_name)}.pdf"
+    pdf_name = f"review_{_safe_filename(employee_name)}.pdf"
     tmp_root = Path(tempfile.gettempdir()) / "employee_reviews_html"
     tmp_root.mkdir(parents=True, exist_ok=True)
 
